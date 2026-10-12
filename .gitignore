@@ -1,0 +1,10 @@
+# Temporary & build outputs
+out/
+toolchain/
+*.zip
+*.img
+*.tar.gz
+*.dtb
+
+# Local environment overrides
+.env.local

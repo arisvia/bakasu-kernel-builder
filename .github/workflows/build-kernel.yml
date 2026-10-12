@@ -1,0 +1,227 @@
+name: Build BakaSU Kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: 'Target Device Profile (filename without .env in devices/)'
+        required: true
+        default: 'polaris'
+      custom_repo:
+        description: '[Custom] Kernel Git Repo URL (only if device=custom)'
+        required: false
+        default: ''
+      custom_branch:
+        description: '[Custom] Kernel Git Branch (only if device=custom)'
+        required: false
+        default: ''
+      custom_defconfig:
+        description: '[Custom] Kernel Defconfig (only if device=custom)'
+        required: false
+        default: ''
+      enable_bakasu:
+        description: 'Enable BakaSU integration'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Builder Repo
+        uses: actions/checkout@v4
+
+      - name: Load Device Profile
+        run: |
+          DEVICE="${{ github.event.inputs.device }}"
+          echo "Requested device profile: $DEVICE"
+
+          if [ "$DEVICE" != "custom" ]; then
+            CONFIG_FILE="devices/${DEVICE}.env"
+            if [ -f "$CONFIG_FILE" ]; then
+              echo "[+] Sourcing $CONFIG_FILE"
+              set -a
+              source "$CONFIG_FILE"
+              set +a
+            else
+              echo "[-] Error: Profile $CONFIG_FILE does not exist!"
+              exit 1
+            fi
+          else
+            echo "[+] Using custom manual inputs..."
+            DEVICE_NAME="custom"
+            DEVICE_MODEL="Custom Device"
+            KERNEL_REPO="${{ github.event.inputs.custom_repo }}"
+            KERNEL_BRANCH="${{ github.event.inputs.custom_branch }}"
+            KERNEL_DEFCONFIG="${{ github.event.inputs.custom_defconfig }}"
+            ARCH="arm64"
+            KERNEL_IMAGE_NAME="Image.gz-dtb"
+            CLANG_VERSION="r510016"
+            CLANG_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r510016.tar.gz"
+            ANYKERNEL3_REPO="https://github.com/osm0sis/AnyKernel3"
+            ANYKERNEL3_BRANCH="master"
+            KSU_HOOK_METHOD="manual"
+          fi
+
+          # Export into GitHub Actions Environment
+          echo "DEVICE_NAME=${DEVICE_NAME:-$DEVICE}" >> $GITHUB_ENV
+          echo "DEVICE_MODEL=${DEVICE_MODEL:-$DEVICE}" >> $GITHUB_ENV
+          echo "KERNEL_REPO=${KERNEL_REPO}" >> $GITHUB_ENV
+          echo "KERNEL_BRANCH=${KERNEL_BRANCH}" >> $GITHUB_ENV
+          echo "KERNEL_DEFCONFIG=${KERNEL_DEFCONFIG}" >> $GITHUB_ENV
+          echo "ARCH=${ARCH:-arm64}" >> $GITHUB_ENV
+          echo "KERNEL_IMAGE_NAME=${KERNEL_IMAGE_NAME:-Image.gz-dtb}" >> $GITHUB_ENV
+          echo "CLANG_VERSION=${CLANG_VERSION:-r510016}" >> $GITHUB_ENV
+          echo "CLANG_URL=${CLANG_URL}" >> $GITHUB_ENV
+          echo "ANYKERNEL3_REPO=${ANYKERNEL3_REPO:-https://github.com/osm0sis/AnyKernel3}" >> $GITHUB_ENV
+          echo "ANYKERNEL3_BRANCH=${ANYKERNEL3_BRANCH:-master}" >> $GITHUB_ENV
+          echo "KSU_HOOK_METHOD=${KSU_HOOK_METHOD:-manual}" >> $GITHUB_ENV
+
+      - name: Install System Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev \
+            g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev \
+            squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng \
+            libncurses5 libncurses5-dev libssl-dev bc libelf-dev python3 python-is-python3 tar
+
+      - name: Setup Toolchain (Clang & GCC)
+        run: |
+          mkdir -p toolchain/clang
+          echo "[+] Downloading Clang ${{ env.CLANG_VERSION }}..."
+          curl -LSs "${{ env.CLANG_URL }}" | tar -xz -C toolchain/clang
+
+          mkdir -p toolchain/gcc-arm64
+          echo "[+] Cloning GCC aarch64..."
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 toolchain/gcc-arm64
+
+          mkdir -p toolchain/gcc-arm
+          echo "[+] Cloning GCC arm32..."
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 toolchain/gcc-arm
+
+          echo "TOOLCHAIN_DIR=$(pwd)/toolchain" >> $GITHUB_ENV
+
+      - name: Clone Kernel Source
+        run: |
+          echo "[+] Cloning ${{ env.KERNEL_REPO }} (branch: ${{ env.KERNEL_BRANCH }})..."
+          git clone --depth=1 "${{ env.KERNEL_REPO }}" -b "${{ env.KERNEL_BRANCH }}" kernel-source
+
+      - name: Integrate BakaSU
+        if: ${{ github.event.inputs.enable_bakasu }}
+        run: |
+          cd kernel-source
+          echo "[+] Installing BakaSU driver..."
+          curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash -
+
+      - name: Build Kernel
+        run: |
+          cd kernel-source
+          export PATH="${{ env.TOOLCHAIN_DIR }}/clang/bin:${{ env.TOOLCHAIN_DIR }}/gcc-arm64/bin:${{ env.TOOLCHAIN_DIR }}/gcc-arm/bin:$PATH"
+          export ARCH=${{ env.ARCH }}
+          export SUBARCH=${{ env.ARCH }}
+          export CROSS_COMPILE=aarch64-linux-android-
+          export CROSS_COMPILE_ARM32=arm-linux-androideabi-
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          export CC=clang
+
+          mkdir -p out
+
+          echo "[+] Generating defconfig: ${{ env.KERNEL_DEFCONFIG }}..."
+          make O=out ${{ env.KERNEL_DEFCONFIG }}
+
+          if [ "${{ github.event.inputs.enable_bakasu }}" = "true" ]; then
+            echo "[+] Enabling BakaSU in config..."
+            scripts/config --file out/.config -e KSU
+            if [ "${{ env.KSU_HOOK_METHOD }}" = "manual" ]; then
+              scripts/config --file out/.config \
+                -e KSU_MANUAL_HOOK \
+                -e KSU_MANUAL_HOOK_AUTO_SETUID_HOOK \
+                -e KSU_MANUAL_HOOK_AUTO_INITRC_HOOK \
+                -e KSU_MANUAL_HOOK_AUTO_INPUT_HOOK \
+                -d KSU_TRACEPOINT_HOOK
+            else
+              scripts/config --file out/.config \
+                -e KSU_TRACEPOINT_HOOK \
+                -d KSU_MANUAL_HOOK
+            fi
+          fi
+
+          echo "[+] Compiling Kernel with $(nproc) cores..."
+          make O=out -j$(nproc) \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-android- \
+            CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+            CLANG_TRIPLE=aarch64-linux-gnu-
+
+          echo "[+] Checking compilation outputs..."
+          TARGET_FILE="out/arch/arm64/boot/${{ env.KERNEL_IMAGE_NAME }}"
+          if [ ! -f "$TARGET_FILE" ]; then
+            if [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
+              TARGET_FILE="out/arch/arm64/boot/Image.gz-dtb"
+            elif [ -f "out/arch/arm64/boot/Image.gz" ]; then
+              TARGET_FILE="out/arch/arm64/boot/Image.gz"
+            elif [ -f "out/arch/arm64/boot/Image" ]; then
+              TARGET_FILE="out/arch/arm64/boot/Image"
+            else
+              echo "[-] Error: Kernel binary not found in out/arch/arm64/boot/!"
+              ls -la out/arch/arm64/boot/ || true
+              exit 1
+            fi
+          fi
+
+          echo "Target kernel file found: $TARGET_FILE"
+          echo "KERNEL_OUTPUT_BIN=$(pwd)/$TARGET_FILE" >> $GITHUB_ENV
+
+      - name: Package AnyKernel3 Zip
+        run: |
+          git clone --depth=1 "${{ env.ANYKERNEL3_REPO }}" -b "${{ env.ANYKERNEL3_BRANCH }}" anykernel3
+          cd anykernel3
+          rm -rf .git
+
+          echo "[+] Copying kernel image to AnyKernel3..."
+          cp "${{ env.KERNEL_OUTPUT_BIN }}" ./
+
+          # Update device check in anykernel.sh
+          sed -i "s/device.name1=.*/device.name1=${{ env.DEVICE_NAME }}/g" anykernel.sh || true
+
+          DATE_TAG=$(date +%Y%m%d_%H%M%S)
+          ZIP_NAME="BakaSU-${{ env.DEVICE_NAME }}-${DATE_TAG}.zip"
+          zip -r9 "$ZIP_NAME" * -x .git README.md *placeholder
+
+          echo "RELEASE_ZIP_PATH=$(pwd)/$ZIP_NAME" >> $GITHUB_ENV
+          echo "RELEASE_ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+          echo "BUILD_DATE=$DATE_TAG" >> $GITHUB_ENV
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.RELEASE_ZIP_NAME }}
+          path: ${{ env.RELEASE_ZIP_PATH }}
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        with:
+          tag_name: ${{ env.DEVICE_NAME }}-${{ env.BUILD_DATE }}
+          name: BakaSU Kernel for ${{ env.DEVICE_MODEL }} (${{ env.BUILD_DATE }})
+          body: |
+            ### BakaSU Kernel Build Result
+            - **Device**: `${{ env.DEVICE_MODEL }} (${{ env.DEVICE_NAME }})`
+            - **Kernel Source**: `${{ env.KERNEL_REPO }}`
+            - **Branch**: `${{ env.KERNEL_BRANCH }}`
+            - **Clang Version**: `${{ env.CLANG_VERSION }}`
+            - **BakaSU Enabled**: `${{ github.event.inputs.enable_bakasu }}`
+            
+            #### 刷入方式：
+            1. 下载下方的 `.zip` 刷机包。
+            2. 重启手机进入 AOSP / Axion Recovery。
+            3. 选择 `Apply update` -> `Apply from ADB`。
+            4. 电脑运行 `adb sideload <文件名>.zip`。
+          files: |
+            ${{ env.RELEASE_ZIP_PATH }}
+            ${{ env.KERNEL_OUTPUT_BIN }}
