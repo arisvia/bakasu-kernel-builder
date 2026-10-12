@@ -1,0 +1,133 @@
+--- a/fs/exec.c
++++ b/fs/exec.c
+@@ -67,6 +67,12 @@
+ 
+ #include <trace/events/sched.h>
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++__attribute__((hot))
++extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,
++				void *argv, void *envp, int *flags);
++#endif
++
+ int suid_dumpable = 0;
+ 
+ static LIST_HEAD(formats);
+@@ -1865,6 +1871,9 @@ static int do_execveat_common(int fd, struct filename *filename,
+ 			      struct user_arg_ptr envp,
+ 			      int flags)
+ {
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);
++#endif
+ 	return __do_execve_file(fd, filename, argv, envp, flags, NULL);
+ }
+ 
+--- a/fs/open.c
++++ b/fs/open.c
+@@ -33,6 +33,12 @@
+ #include <linux/compat.h>
+ 
+ #include "internal.h"
++
++#ifdef CONFIG_KSU_MANUAL_HOOK
++__attribute__((hot))
++extern int ksu_handle_faccessat(int *dfd, const char __user **filename_user,
++				int *mode, int *__unused_flags);
++#endif
+ 
+ int do_truncate2(struct vfsmount *mnt, struct dentry *dentry, loff_t length,
+ 		unsigned int time_attrs, struct file *filp)
+@@ -453,6 +459,9 @@ long do_faccessat(int dfd, const char __user *filename, int mode)
+ 
+ SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
+ {
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_faccessat(&dfd, &filename, &mode, NULL);
++#endif
+ 	return do_faccessat(dfd, filename, mode);
+ }
+ 
+--- a/fs/stat.c
++++ b/fs/stat.c
+@@ -19,6 +19,17 @@
+ #include <linux/uaccess.h>
+ #include <asm/unistd.h>
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++__attribute__((hot))
++extern int ksu_handle_stat(int *dfd, const char __user **filename_user,
++				int *flags);
++
++extern void ksu_handle_newfstat_ret(unsigned int *fd, struct stat __user **statbuf_ptr);
++#if defined(__ARCH_WANT_STAT64) || defined(__ARCH_WANT_COMPAT_STAT64)
++extern void ksu_handle_fstat64_ret(unsigned long *fd, struct stat64 __user **statbuf_ptr);
++#endif
++#endif
++
+ /**
+  * generic_fillattr - Fill in the basic attributes from the inode struct
+  * @inode: Inode to use as the source
+@@ -345,6 +356,9 @@ SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
+ 	struct kstat stat;
+ 	int error;
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_stat(&dfd, &filename, &flag);
++#endif
+ 	error = vfs_fstatat(dfd, filename, &stat, flag);
+ 	if (error)
+ 		return error;
+@@ -356,6 +370,9 @@ SYSCALL_DEFINE2(newfstat, unsigned int, fd, struct stat __user *, statbuf)
+ 	struct kstat stat;
+ 	int error = vfs_fstat(fd, &stat);
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_newfstat_ret(&fd, &statbuf);
++#endif
+ 	if (!error)
+ 		error = cp_new_stat(&stat, statbuf);
+ 
+@@ -476,6 +493,9 @@ SYSCALL_DEFINE2(fstat64, unsigned long, fd, struct stat64 __user *, statbuf)
+ 	struct kstat stat;
+ 	int error = vfs_fstat(fd, &stat);
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_fstat64_ret(&fd, &statbuf);
++#endif
+ 	if (!error)
+ 		error = cp_new_stat64(&stat, statbuf);
+ 
+@@ -487,6 +507,9 @@ SYSCALL_DEFINE4(fstatat64, int, dfd, const char __user *, filename,
+ 	struct kstat stat;
+ 	int error;
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_stat(&dfd, &filename, &flag);
++#endif
+ 	error = vfs_fstatat(dfd, filename, &stat, flag);
+ 	if (error)
+ 		return error;
+--- a/kernel/reboot.c
++++ b/kernel/reboot.c
+@@ -18,6 +18,10 @@
+ #include <linux/syscore_ops.h>
+ #include <linux/uaccess.h>
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg);
++#endif
++
+ /*
+  * this indicates whether you can reboot with ctrl-alt-del: the default is yes
+  */
+@@ -354,6 +358,9 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
+ 	if (!ns_capable(pid_ns->user_ns, CAP_SYS_BOOT))
+ 		return -EPERM;
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_sys_reboot(magic1, magic2, cmd, &arg);
++#endif
+ 	/* For safety, we require "magic" arguments. */
+ 	if (magic1 != LINUX_REBOOT_MAGIC1 ||
+ 			(magic2 != LINUX_REBOOT_MAGIC2 &&

@@ -60,6 +60,7 @@ jobs:
             KERNEL_DEFCONFIG="${{ github.event.inputs.custom_defconfig }}"
             ARCH="arm64"
             KERNEL_IMAGE_NAME="Image.gz-dtb"
+            KERNEL_VERSION_TYPE="4.19"
             CLANG_BRANCH="android13-release"
             CLANG_DIR_NAME="clang-r450784d"
             GCC_BRANCH="android12L-release"
@@ -76,6 +77,7 @@ jobs:
           echo "KERNEL_DEFCONFIG=${KERNEL_DEFCONFIG}" >> $GITHUB_ENV
           echo "ARCH=${ARCH:-arm64}" >> $GITHUB_ENV
           echo "KERNEL_IMAGE_NAME=${KERNEL_IMAGE_NAME:-Image.gz-dtb}" >> $GITHUB_ENV
+          echo "KERNEL_VERSION_TYPE=${KERNEL_VERSION_TYPE:-4.19}" >> $GITHUB_ENV
           echo "CLANG_BRANCH=${CLANG_BRANCH:-android13-release}" >> $GITHUB_ENV
           echo "CLANG_DIR_NAME=${CLANG_DIR_NAME:-clang-r450784d}" >> $GITHUB_ENV
           echo "GCC_BRANCH=${GCC_BRANCH:-android12L-release}" >> $GITHUB_ENV
@@ -89,7 +91,7 @@ jobs:
           sudo apt-get install -y -qq --no-install-recommends \
             bc bison build-essential ccache curl flex git \
             libelf-dev libssl-dev libncurses-dev make python3 \
-            device-tree-compiler zip unzip tar
+            device-tree-compiler zip unzip tar patch
 
       - name: Setup Toolchain (AOSP Clang & GCC)
         run: |
@@ -125,6 +127,17 @@ jobs:
           cd kernel-source
           echo "[+] Installing BakaSU driver..."
           curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash -
+
+          if [ "${{ env.KSU_HOOK_METHOD }}" = "manual" ]; then
+            echo "[+] Checking for manual hook patch in patches/${{ env.KERNEL_VERSION_TYPE }}..."
+            PATCH_FILE="../patches/${{ env.KERNEL_VERSION_TYPE }}/manual-hook.patch"
+            if [ -f "$PATCH_FILE" ]; then
+              echo "[+] Applying manual hook patch: $PATCH_FILE"
+              patch -p1 < "$PATCH_FILE"
+            else
+              echo "[-] Warning: No patch found at $PATCH_FILE"
+            fi
+          fi
 
       - name: Build Kernel
         run: |
