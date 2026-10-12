@@ -30,7 +30,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout Builder Repo
         uses: actions/checkout@v4
@@ -60,8 +60,9 @@ jobs:
             KERNEL_DEFCONFIG="${{ github.event.inputs.custom_defconfig }}"
             ARCH="arm64"
             KERNEL_IMAGE_NAME="Image.gz-dtb"
-            CLANG_VERSION="r510016"
-            CLANG_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r510016.tar.gz"
+            CLANG_BRANCH="android13-release"
+            CLANG_DIR_NAME="clang-r450784d"
+            GCC_BRANCH="android12L-release"
             ANYKERNEL3_REPO="https://github.com/osm0sis/AnyKernel3"
             ANYKERNEL3_BRANCH="master"
             KSU_HOOK_METHOD="manual"
@@ -75,36 +76,43 @@ jobs:
           echo "KERNEL_DEFCONFIG=${KERNEL_DEFCONFIG}" >> $GITHUB_ENV
           echo "ARCH=${ARCH:-arm64}" >> $GITHUB_ENV
           echo "KERNEL_IMAGE_NAME=${KERNEL_IMAGE_NAME:-Image.gz-dtb}" >> $GITHUB_ENV
-          echo "CLANG_VERSION=${CLANG_VERSION:-r510016}" >> $GITHUB_ENV
-          echo "CLANG_URL=${CLANG_URL}" >> $GITHUB_ENV
+          echo "CLANG_BRANCH=${CLANG_BRANCH:-android13-release}" >> $GITHUB_ENV
+          echo "CLANG_DIR_NAME=${CLANG_DIR_NAME:-clang-r450784d}" >> $GITHUB_ENV
+          echo "GCC_BRANCH=${GCC_BRANCH:-android12L-release}" >> $GITHUB_ENV
           echo "ANYKERNEL3_REPO=${ANYKERNEL3_REPO:-https://github.com/osm0sis/AnyKernel3}" >> $GITHUB_ENV
           echo "ANYKERNEL3_BRANCH=${ANYKERNEL3_BRANCH:-master}" >> $GITHUB_ENV
           echo "KSU_HOOK_METHOD=${KSU_HOOK_METHOD:-manual}" >> $GITHUB_ENV
 
       - name: Install System Build Dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev \
-            g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev \
-            squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng \
-            libncurses5 libncurses5-dev libssl-dev bc libelf-dev python3 python-is-python3 tar
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            bc bison build-essential ccache curl flex git \
+            libelf-dev libssl-dev libncurses-dev make python3 \
+            device-tree-compiler zip unzip tar
 
-      - name: Setup Toolchain (Clang & GCC)
+      - name: Setup Toolchain (AOSP Clang & GCC)
         run: |
-          mkdir -p toolchain/clang
-          echo "[+] Downloading Clang ${{ env.CLANG_VERSION }}..."
-          curl -LSs "${{ env.CLANG_URL }}" | tar -xz -C toolchain/clang
+          mkdir -p toolchain
+          echo "[+] Fetching AOSP Clang (${{ env.CLANG_BRANCH }})..."
+          git clone -q --depth=1 --single-branch \
+            https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 \
+            -b "${{ env.CLANG_BRANCH }}" toolchain/clang-repo
+          CLANG_DIR="$(pwd)/toolchain/clang-repo/${{ env.CLANG_DIR_NAME }}"
 
-          mkdir -p toolchain/gcc-arm64
-          echo "[+] Cloning GCC aarch64..."
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 toolchain/gcc-arm64
+          echo "[+] Fetching GCC aarch64..."
+          git clone -q --depth=1 --single-branch \
+            https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 \
+            -b "${{ env.GCC_BRANCH }}" toolchain/gcc64
 
-          mkdir -p toolchain/gcc-arm
-          echo "[+] Cloning GCC arm32..."
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 toolchain/gcc-arm
+          echo "[+] Fetching GCC arm32..."
+          git clone -q --depth=1 --single-branch \
+            https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 \
+            -b "${{ env.GCC_BRANCH }}" toolchain/gcc32
 
           echo "TOOLCHAIN_DIR=$(pwd)/toolchain" >> $GITHUB_ENV
+          echo "CLANG_DIR=$CLANG_DIR" >> $GITHUB_ENV
+          echo "$CLANG_DIR/bin:$(pwd)/toolchain/gcc64/bin:$(pwd)/toolchain/gcc32/bin" >> $GITHUB_PATH
 
       - name: Clone Kernel Source
         run: |
@@ -121,18 +129,16 @@ jobs:
       - name: Build Kernel
         run: |
           cd kernel-source
-          export PATH="${{ env.TOOLCHAIN_DIR }}/clang/bin:${{ env.TOOLCHAIN_DIR }}/gcc-arm64/bin:${{ env.TOOLCHAIN_DIR }}/gcc-arm/bin:$PATH"
+          export PATH="${{ env.CLANG_DIR }}/bin:${{ env.TOOLCHAIN_DIR }}/gcc64/bin:${{ env.TOOLCHAIN_DIR }}/gcc32/bin:$PATH"
           export ARCH=${{ env.ARCH }}
           export SUBARCH=${{ env.ARCH }}
-          export CROSS_COMPILE=aarch64-linux-android-
-          export CROSS_COMPILE_ARM32=arm-linux-androideabi-
-          export CLANG_TRIPLE=aarch64-linux-gnu-
-          export CC=clang
+          export KBUILD_BUILD_USER=kernel
+          export KBUILD_BUILD_HOST=build
 
           mkdir -p out
 
           echo "[+] Generating defconfig: ${{ env.KERNEL_DEFCONFIG }}..."
-          make O=out ${{ env.KERNEL_DEFCONFIG }}
+          make O=out ARCH=${{ env.ARCH }} ${{ env.KERNEL_DEFCONFIG }}
 
           if [ "${{ github.event.inputs.enable_bakasu }}" = "true" ]; then
             echo "[+] Enabling BakaSU in config..."
@@ -152,11 +158,12 @@ jobs:
           fi
 
           echo "[+] Compiling Kernel with $(nproc) cores..."
-          make O=out -j$(nproc) \
-            CC=clang \
-            CROSS_COMPILE=aarch64-linux-android- \
-            CROSS_COMPILE_ARM32=arm-linux-androideabi- \
-            CLANG_TRIPLE=aarch64-linux-gnu-
+          make -j$(nproc) O=out ARCH=${{ env.ARCH }} \
+            CC="clang" \
+            CLANG_TRIPLE="aarch64-linux-gnu-" \
+            CROSS_COMPILE="${{ env.TOOLCHAIN_DIR }}/gcc64/bin/aarch64-linux-android-" \
+            CROSS_COMPILE_ARM32="${{ env.TOOLCHAIN_DIR }}/gcc32/bin/arm-linux-androideabi-" \
+            LD=ld.lld LLVM=1 LLVM_IAS=1
 
           echo "[+] Checking compilation outputs..."
           TARGET_FILE="out/arch/arm64/boot/${{ env.KERNEL_IMAGE_NAME }}"
@@ -181,17 +188,19 @@ jobs:
         run: |
           git clone --depth=1 "${{ env.ANYKERNEL3_REPO }}" -b "${{ env.ANYKERNEL3_BRANCH }}" anykernel3
           cd anykernel3
-          rm -rf .git
+          rm -rf .git .github .gitignore
 
           echo "[+] Copying kernel image to AnyKernel3..."
           cp "${{ env.KERNEL_OUTPUT_BIN }}" ./
 
           # Update device check in anykernel.sh
           sed -i "s/device.name1=.*/device.name1=${{ env.DEVICE_NAME }}/g" anykernel.sh || true
+          sed -i "s|BLOCK=.*|BLOCK=/dev/block/bootdevice/by-name/boot;|" anykernel.sh || true
+          sed -i "s/IS_SLOT_DEVICE=.*/IS_SLOT_DEVICE=0;/" anykernel.sh || true
 
           DATE_TAG=$(date +%Y%m%d_%H%M%S)
           ZIP_NAME="BakaSU-${{ env.DEVICE_NAME }}-${DATE_TAG}.zip"
-          zip -r9 "$ZIP_NAME" * -x .git README.md *placeholder
+          zip -r9 "$ZIP_NAME" * -x README.md *placeholder
 
           echo "RELEASE_ZIP_PATH=$(pwd)/$ZIP_NAME" >> $GITHUB_ENV
           echo "RELEASE_ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
@@ -214,12 +223,12 @@ jobs:
             - **Device**: `${{ env.DEVICE_MODEL }} (${{ env.DEVICE_NAME }})`
             - **Kernel Source**: `${{ env.KERNEL_REPO }}`
             - **Branch**: `${{ env.KERNEL_BRANCH }}`
-            - **Clang Version**: `${{ env.CLANG_VERSION }}`
+            - **Toolchain**: AOSP Clang `${{ env.CLANG_DIR_NAME }}`
             - **BakaSU Enabled**: `${{ github.event.inputs.enable_bakasu }}`
             
             #### 刷入方式：
             1. 下载下方的 `.zip` 刷机包。
-            2. 重启手机进入 AOSP / Axion Recovery。
+            2. 重启手机进入 Axion / AOSP 官方 Recovery。
             3. 选择 `Apply update` -> `Apply from ADB`。
             4. 电脑运行 `adb sideload <文件名>.zip`。
           files: |
