@@ -348,6 +348,12 @@ jobs:
           cd anykernel3
           rm -rf .git .github .gitignore ramdisk patch modules
 
+          if [ "${{ env.ARCH }}" = "arm64" ]; then
+            echo "[+] Injecting official 64-bit ARM64 tools for modern 64-bit recovery..."
+            curl -sSL "https://github.com/osm0sis/AnyKernel3/archive/refs/heads/arm64-tools.tar.gz" | tar -xz -C tools/ --strip-components=1
+            chmod +x tools/*
+          fi
+
           echo "[+] Copying kernel image to AnyKernel3..."
           cp "${{ env.KERNEL_OUTPUT_BIN }}" ./
 
