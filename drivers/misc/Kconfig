@@ -647,6 +647,13 @@ source "drivers/misc/ocxl/Kconfig"
 source "drivers/misc/cardreader/Kconfig"
 source "drivers/misc/fpr_FingerprintCard/Kconfig"
 source "drivers/misc/qrc/Kconfig"
+config NTSYNC
+	bool "NT synchronization primitive emulation"
+	default y
+	help
+	  This module provides kernel support for emulating Windows NT
+	  synchronization primitives via /dev/ntsync.
+
 endmenu
 
 config OKL4_USER_VIPC

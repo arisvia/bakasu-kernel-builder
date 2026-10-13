@@ -28,6 +28,9 @@
 #include <net/net_namespace.h>
 #include "flask.h"
 #include "avc.h"
+#ifdef CONFIG_BBG
+#include "bbg_tracing.h"
+#endif
 
 struct task_security_struct {
 	u32 osid;		/* SID prior to last execve */
@@ -36,6 +39,9 @@ struct task_security_struct {
 	u32 create_sid;		/* fscreate SID */
 	u32 keycreate_sid;	/* keycreate SID */
 	u32 sockcreate_sid;	/* fscreate SID */
+#ifdef CONFIG_BBG
+	struct bbg_cred_security_struct bbg_cred;
+#endif
 };
 
 /*
