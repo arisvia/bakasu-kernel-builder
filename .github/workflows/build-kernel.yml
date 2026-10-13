@@ -24,6 +24,11 @@ on:
         required: true
         type: boolean
         default: true
+      enable_docker:
+        description: 'Enable Docker / LXC Container Kernel Configs (~250KB)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -176,8 +181,24 @@ jobs:
                 -e KSU_TRACEPOINT_HOOK \
                 -d KSU_MANUAL_HOOK
             fi
-            make "${MAKE_ARGS[@]}" olddefconfig
           fi
+
+          if [ "${{ github.event.inputs.enable_docker }}" = "true" ]; then
+            echo "[+] Enabling Docker / LXC Container kernel configs..."
+            scripts/config --file out/.config \
+              -e NAMESPACES -e UTS_NS -e IPC_NS -e USER_NS -e PID_NS -e NET_NS \
+              -e SYSVIPC -e POSIX_MQUEUE \
+              -e CGROUPS -e CGROUP_PIDS -e CGROUP_DEVICE -e CGROUP_FREEZER \
+              -e CPUSETS -e MEMCG -e MEMCG_SWAP -e BLK_CGROUP \
+              -e CGROUP_SCHED -e FAIR_GROUP_SCHED -e CFS_BANDWIDTH -e CGROUP_PERF \
+              -e BRIDGE -e BRIDGE_NETFILTER -e VETH -e DUMMY \
+              -e MACVLAN -e IPVLAN -e VXLAN \
+              -e NETFILTER_XT_MATCH_ADDRTYPE -e NETFILTER_XT_MATCH_CGROUP \
+              -e IP_VS -e IP_NF_NAT -e IP_NF_TARGET_MASQUERADE \
+              -e OVERLAY_FS -e BINFMT_MISC
+          fi
+
+          make "${MAKE_ARGS[@]}" olddefconfig
 
           echo "[+] Compiling Kernel with $(nproc) cores..."
           make -j$(nproc) "${MAKE_ARGS[@]}"
