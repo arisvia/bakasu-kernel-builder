@@ -1,0 +1,7 @@
+menu "Tech packages"
+
+source "techpack/data/Kconfig"
+
+source "techpack/xiaomi-sdm845/Kconfig"
+
+endmenu
