@@ -145,19 +145,30 @@ jobs:
             device-tree-compiler zip unzip tar patch \
             binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi
 
+      - name: Cache AOSP Clang Toolchain
+        id: cache-clang
+        uses: actions/cache@v4
+        with:
+          path: toolchain/clang-repo/${{ env.CLANG_DIR_NAME }}
+          key: clang-${{ env.CLANG_BRANCH }}-${{ env.CLANG_DIR_NAME }}
+
       - name: Setup Toolchain (AOSP Clang / LLVM)
         run: |
           mkdir -p toolchain
-          echo "[+] Fetching AOSP Clang (${{ env.CLANG_BRANCH }} / ${{ env.CLANG_DIR_NAME }})..."
-          if git clone -q --depth=1 --filter=blob:none --sparse --single-branch \
-            https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 \
-            -b "${{ env.CLANG_BRANCH }}" toolchain/clang-repo 2>/dev/null; then
-            git -C toolchain/clang-repo sparse-checkout set "${{ env.CLANG_DIR_NAME }}"
+          if [ "${{ steps.cache-clang.outputs.cache-hit }}" = "true" ]; then
+            echo "[+] Clang toolchain restored from cache."
           else
-            rm -rf toolchain/clang-repo
-            git clone -q --depth=1 --single-branch \
+            echo "[+] Cache miss. Fetching AOSP Clang (${{ env.CLANG_BRANCH }} / ${{ env.CLANG_DIR_NAME }})..."
+            if git clone -q --depth=1 --filter=blob:none --sparse --single-branch \
               https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 \
-              -b "${{ env.CLANG_BRANCH }}" toolchain/clang-repo
+              -b "${{ env.CLANG_BRANCH }}" toolchain/clang-repo 2>/dev/null; then
+              git -C toolchain/clang-repo sparse-checkout set "${{ env.CLANG_DIR_NAME }}"
+            else
+              rm -rf toolchain/clang-repo
+              git clone -q --depth=1 --single-branch \
+                https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 \
+                -b "${{ env.CLANG_BRANCH }}" toolchain/clang-repo
+            fi
           fi
           CLANG_DIR="$(pwd)/toolchain/clang-repo/${{ env.CLANG_DIR_NAME }}"
           "$CLANG_DIR/bin/clang" --version
@@ -165,6 +176,15 @@ jobs:
           echo "TOOLCHAIN_DIR=$(pwd)/toolchain" >> $GITHUB_ENV
           echo "CLANG_DIR=$CLANG_DIR" >> $GITHUB_ENV
           echo "$CLANG_DIR/bin" >> $GITHUB_PATH
+
+      - name: Setup Ccache Build Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ env.DEVICE_NAME }}-${{ env.KERNEL_BRANCH }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ env.DEVICE_NAME }}-${{ env.KERNEL_BRANCH }}-
+            ccache-${{ env.DEVICE_NAME }}-
       - name: Clone Kernel Source
         run: |
           echo "[+] Cloning ${{ env.KERNEL_REPO }} (branch: ${{ env.KERNEL_BRANCH }})..."
@@ -197,12 +217,18 @@ jobs:
           export KBUILD_BUILD_USER=kernel
           export KBUILD_BUILD_HOST=build
 
+          # Configure and verify ccache
+          export CCACHE_DIR="$HOME/.cache/ccache"
+          ccache -M 2G
+          echo "[+] Initial Ccache status:"
+          ccache -s
+
           mkdir -p out
 
           MAKE_ARGS=(
             O=out
             ARCH="${{ env.ARCH }}"
-            CC="clang"
+            CC="ccache clang"
             LD="ld.lld"
             LLVM=1
             LLVM_IAS=1
@@ -268,6 +294,9 @@ jobs:
 
           echo "Target kernel file found: $TARGET_FILE"
           echo "KERNEL_OUTPUT_BIN=$(pwd)/$TARGET_FILE" >> $GITHUB_ENV
+
+          echo "[+] Final Ccache statistics:"
+          ccache -s
 
       - name: Package AnyKernel3 Zip
         run: |
