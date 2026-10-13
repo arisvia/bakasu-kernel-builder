@@ -12,6 +12,19 @@
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **`polaris`** | 小米 MIX 2S | Linux 4.19.325 | `sdm845` (本仓库独立分支) | AxionOS 2.x (Android 15/16) / LineageOS 21+ | `devices/polaris.env` |
 
+
+### ✨ `sdm845` (`polaris`) 内核已集成特性
+- **Root 框架**：原生集成 [BakaSU](https://github.com/Baka-SU/BakaSU) 手动系统调用钩子（`CONFIG_KSU_MANUAL_HOOK=y`）。
+- **基带防护**：集成 **Baseband-Guard**（`CONFIG_BBG=y`），基于 LSM 拦截不可信 Root 派生进程对基带/EFS 等关键分区的写入、篡改与破坏性 `ioctl`，放行 `zram`/`loop`/`dm-*` 虚拟块设备。
+- **后台墓碑支持**：集成 **Re-Kernel v8.5**（`CONFIG_REKERNEL=y`、`CONFIG_REKERNEL_NETWORK=y`），通过 Netlink 通知机制配合 Scene / NoActive 等墓碑应用处理冻结进程的 Binder 事务、信号与 TCP 入站数据包解冻。
+- **内存与回收子系统**：
+  - 完整移植 **Multi-Gen LRU (MGLRU)**（`CONFIG_LRU_GEN=y`、`CONFIG_LRU_GEN_ENABLED=y`），大幅降低 Android 15/16 后台杀进程与内存抖动；
+  - **ZRAM** 支持 `lz4` / `lz4hc` / `zstd` 压缩算法，默认压缩器设为 **`lz4`**（`CONFIG_ZRAM_DEF_COMP_LZ4=y`）并开启闲置页回写（`CONFIG_ZRAM_WRITEBACK=y`）。
+- **网络与协议栈**：默认开启 **TCP BBR** 拥塞控制与 **FQ / FQ_CoDel** 队列调度（`CONFIG_DEFAULT_BBR=y`），原生内置 **WireGuard**（`CONFIG_WIREGUARD=y`）。
+- **模拟器与容器扩展**：
+  - 完整移植 Linux 6.14 **NTSYNC**（`CONFIG_NTSYNC=y`，`/dev/ntsync`）及 `CONFIG_BINFMT_MISC=y`，提升 Winlator / Box64 / Wine 同步原语性能；
+  - Actions 构建支持一键勾选 `enable_docker` 开启全部 27 项 Docker / LXC 容器内核命名空间、Cgroups 与虚拟网络特性。
+- **编译与调度调优**：采用 AOSP **Clang 20.0.0 (`clang-r547379`) + LLD 20** 纯 LLVM 编译，开启 **Clang ThinLTO**（`CONFIG_LTO_CLANG=y` + `CONFIG_THINLTO=y`）、**300Hz** 调度时钟（`CONFIG_HZ_300=y`）、**RCU Boost**（`CONFIG_RCU_BOOST=y`）及能效工作队列（`CONFIG_WQ_POWER_EFFICIENT_DEFAULT=y`）。
 ---
 
 ## 🚀 快速上手：一键构建
@@ -24,6 +37,7 @@
    点击右侧的 **`Run workflow`** 下拉按钮：
    - **Target Device Profile**：输入 `polaris`（或选择对应机型配置）。
    - **Enable BakaSU integration**：勾选 `true`。
+   - **Enable Docker / LXC Container Kernel Configs**：按需勾选（默认 `false`）。
    - 点击绿色的 **`Run workflow`** 开始编译。
 4. **下载产物**：
    - 编译完成后（约 8~15 分钟），进入本次构建详情页面。
