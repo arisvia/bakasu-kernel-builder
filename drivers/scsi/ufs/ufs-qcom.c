@@ -1627,7 +1627,8 @@ static int ufs_qcom_cpu_to_group(struct ufs_qcom_host *host, int cpu)
 			if (cpumask_test_cpu(cpu, &host->pm_qos.groups[i].mask))
 				return i;
 
-	return host->pm_qos.default_cpu;
+	return host->pm_qos.default_cpu < host->pm_qos.num_groups ?
+	       host->pm_qos.default_cpu : 0;
 }
 
 static void ufs_qcom_pm_qos_req_start(struct ufs_hba *hba, struct request *req)

@@ -823,7 +823,8 @@ static void dd_insert_request(struct blk_mq_hw_ctx *hctx, struct request *rq,
 	 */
 	blk_req_zone_write_unlock(rq);
 
-	prio = ioprio_class_to_prio[ioprio_class];
+	prio = ioprio_class < ARRAY_SIZE(ioprio_class_to_prio) ?
+	       ioprio_class_to_prio[ioprio_class] : DD_BE_PRIO;
 	per_prio = &dd->per_prio[prio];
 	if (!rq->elv.priv[0]) {
 		per_prio->stats.inserted++;
@@ -835,7 +836,7 @@ static void dd_insert_request(struct blk_mq_hw_ctx *hctx, struct request *rq,
 
 	blk_mq_sched_request_inserted(rq);
 
-	if (at_head) {
+	if (at_head || blk_rq_is_passthrough(rq)) {
 		list_add(&rq->queuelist, &per_prio->dispatch);
 		rq->fifo_time = jiffies;
 	} else {

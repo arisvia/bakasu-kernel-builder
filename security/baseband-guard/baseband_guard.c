@@ -87,6 +87,8 @@ static int bbg_get_cmdline(char *buf, int buflen)
 {
 	int n, i;
 
+	if (buf && buflen > 0)
+		buf[0] = '\0';
 	if (!buf || buflen <= 0)
 		return 0;
 	n = get_cmdline(current, buf, buflen);

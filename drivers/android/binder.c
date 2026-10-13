@@ -3017,7 +3017,7 @@ static bool binder_proc_transaction(struct binder_transaction *t,
 
 		t_outdated->buffer = NULL;
 		buffer->transaction = NULL;
-		binder_transaction_buffer_release(proc, buffer, 0, false);
+		binder_transaction_buffer_release(proc, buffer, buffer->data_size, false);
 		binder_alloc_free_buf(&proc->alloc, buffer);
 		kfree(t_outdated);
 		binder_stats_deleted(BINDER_STAT_TRANSACTION);

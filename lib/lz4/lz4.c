@@ -1732,6 +1732,7 @@ int LZ4_compress_fast(const char *src, char *dest, int srcSize, int dstCapacity,
 #endif
 	return result;
 }
+EXPORT_SYMBOL(LZ4_compress_fast);
 
 int LZ4_compress_default(const char *src, char *dst, int srcSize,
 			 int dstCapacity, void *wrkmem)
@@ -1815,6 +1816,7 @@ int LZ4_compress_destSize(const char *src, char *dst, int *srcSizePtr,
 #endif
 	return result;
 }
+EXPORT_SYMBOL(LZ4_compress_destSize);
 
 /*-******************************
 *  Streaming functions
@@ -3031,24 +3033,47 @@ LZ4_decompress_generic(const char *const src, char *const dst, int srcSize,
 					dictStart, dictSize);
 }
 
+#if defined(CONFIG_ARM64)
+LZ4_FORCE_O2 ssize_t LZ4_arm64_decompress_safe(const void *source, void *dest,
+					       size_t inputSize,
+					       size_t outputSize, bool dip);
+LZ4_FORCE_O2 ssize_t LZ4_arm64_decompress_safe_partial(const void *source,
+						       void *dest,
+						       size_t inputSize,
+						       size_t outputSize,
+						       bool dip);
+#endif
+
 LZ4_FORCE_O2
 int LZ4_decompress_safe(const char *source, char *dest, int compressedSize,
 			int maxDecompressedSize)
 {
+#if defined(CONFIG_ARM64)
+	return (int)LZ4_arm64_decompress_safe(source, dest, (size_t)compressedSize,
+					      (size_t)maxDecompressedSize, false);
+#else
 	return LZ4_decompress_generic(source, dest, compressedSize,
 				      maxDecompressedSize, decode_full_block,
 				      noDict, (BYTE *)dest, NULL, 0);
+#endif
 }
+EXPORT_SYMBOL(LZ4_decompress_safe);
 
 LZ4_FORCE_O2
 int LZ4_decompress_safe_partial(const char *src, char *dst, int compressedSize,
 				int targetOutputSize, int dstCapacity)
 {
 	dstCapacity = MIN(targetOutputSize, dstCapacity);
+#if defined(CONFIG_ARM64)
+	return (int)LZ4_arm64_decompress_safe_partial(src, dst, (size_t)compressedSize,
+						      (size_t)dstCapacity, false);
+#else
 	return LZ4_decompress_generic(src, dst, compressedSize, dstCapacity,
 				      partial_decode, noDict, (BYTE *)dst, NULL,
 				      0);
+#endif
 }
+EXPORT_SYMBOL(LZ4_decompress_safe_partial);
 
 LZ4_FORCE_O2
 int LZ4_decompress_fast(const char *source, char *dest, int originalSize)
@@ -3057,6 +3082,7 @@ int LZ4_decompress_fast(const char *source, char *dest, int originalSize)
 	return LZ4_decompress_unsafe_generic((const BYTE *)source, (BYTE *)dest,
 					     originalSize, 0, NULL, 0);
 }
+EXPORT_SYMBOL(LZ4_decompress_fast);
 
 /*===== Instantiate a few more decoding cases, used more than once. =====*/
 
@@ -3209,6 +3235,7 @@ int LZ4_setStreamDecode(LZ4_streamDecode_t *LZ4_streamDecode,
 	lz4sd->extDictSize = 0;
 	return 1;
 }
+EXPORT_SYMBOL(LZ4_setStreamDecode);
 
 /*! LZ4_decoderRingBufferSize() :
  *  when setting a ring buffer for streaming decompression (optional scenario),
@@ -3295,6 +3322,7 @@ int LZ4_decompress_safe_continue(LZ4_streamDecode_t *LZ4_streamDecode,
 
 	return result;
 }
+EXPORT_SYMBOL(LZ4_decompress_safe_continue);
 
 LZ4_FORCE_O2 ssize_t LZ4_arm64_decompress_safe_partial(const void *source,
 						       void *dest,
@@ -3394,6 +3422,7 @@ LZ4_decompress_fast_continue(LZ4_streamDecode_t *LZ4_streamDecode,
 
 	return result;
 }
+EXPORT_SYMBOL(LZ4_decompress_fast_continue);
 
 /*
 Advanced decoding functions :
@@ -3425,6 +3454,7 @@ int LZ4_decompress_safe_usingDict(const char *source, char *dest,
 						maxOutputSize, dictStart,
 						(size_t)dictSize);
 }
+EXPORT_SYMBOL(LZ4_decompress_safe_usingDict);
 
 int LZ4_decompress_safe_partial_usingDict(const char *source, char *dest,
 					  int compressedSize,
@@ -3464,6 +3494,7 @@ int LZ4_decompress_fast_usingDict(const char *source, char *dest,
 	return LZ4_decompress_fast_extDict(source, dest, originalSize,
 					   dictStart, (size_t)dictSize);
 }
+EXPORT_SYMBOL(LZ4_decompress_fast_usingDict);
 
 /*
 These decompression functions are deprecated and should no longer be used.
