@@ -397,6 +397,9 @@ jobs:
           else
             ZIP_NAME="${{ env.SU_LABEL }}-${{ env.DEVICE_NAME }}-${DATE_TAG}.zip"
           fi
+          echo "[+] Compressing AnyKernel3 flashable zip..."
+          zip -r9 "$ZIP_NAME" * -x .git .gitignore "$ZIP_NAME"
+          echo "[+] AnyKernel3 zip created: $(ls -lh "$ZIP_NAME")"
 
           echo "RELEASE_ZIP_PATH=$(pwd)/$ZIP_NAME" >> $GITHUB_ENV
           echo "RELEASE_ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
