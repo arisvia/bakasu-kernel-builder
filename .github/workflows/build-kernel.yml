@@ -45,11 +45,18 @@ on:
   push:
     branches:
       - sdm845
+    paths-ignore:
+      - '**.md'
+      - '**.txt'
+      - '.gitignore'
   schedule:
     - cron: '0 20 * * *'
 permissions:
   contents: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
     runs-on: ubuntu-24.04
