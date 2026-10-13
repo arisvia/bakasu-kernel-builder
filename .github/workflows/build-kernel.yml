@@ -21,12 +21,13 @@ on:
           - 'nightly'
           - 'artifact_only'
       su_type:
-        description: 'Superuser / Root Solution (bakasu: BakaSU / ksu_next: KernelSU-Next / ksu: Official KernelSU / none: Clean Kernel)'
+        description: 'Superuser / Root Solution (bakasu: BakaSU / sukisu: SukiSU-Ultra / ksu_next: KernelSU-Next / ksu: KernelSU / none: Clean Kernel)'
         required: true
         type: choice
         default: 'bakasu'
         options:
           - 'bakasu'
+          - 'sukisu'
           - 'ksu_next'
           - 'ksu'
           - 'none'
@@ -87,6 +88,7 @@ jobs:
 
           case "$SU_TYPE" in
             bakasu) SU_LABEL="BakaSU" ;;
+            sukisu) SU_LABEL="SukiSU-Ultra" ;;
             ksu_next) SU_LABEL="KernelSU-Next" ;;
             ksu) SU_LABEL="KernelSU" ;;
             none) SU_LABEL="Vanilla" ;;
@@ -220,6 +222,9 @@ jobs:
           if [ "${{ env.SU_TYPE }}" = "bakasu" ]; then
             echo "[+] Installing BakaSU driver..."
             curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash -
+          elif [ "${{ env.SU_TYPE }}" = "sukisu" ]; then
+            echo "[+] Installing SukiSU-Ultra driver (sukisu.org)..."
+            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -
           elif [ "${{ env.SU_TYPE }}" = "ksu_next" ]; then
             echo "[+] Installing KernelSU-Next driver..."
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash - next
