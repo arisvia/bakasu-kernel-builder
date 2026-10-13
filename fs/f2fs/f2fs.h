@@ -2405,6 +2405,11 @@ void f2fs_printk(struct f2fs_sb_info *sbi, const char *fmt, ...);
 #define f2fs_debug(sbi, fmt, ...)					\
 	f2fs_printk(sbi, KERN_DEBUG fmt, ##__VA_ARGS__)
 
+#ifndef f2fs_msg
+#define f2fs_msg(sb, level, fmt, ...) \
+	printk(level "F2FS-fs (%s): " fmt "\n", (sb)->s_id, ##__VA_ARGS__)
+#endif
+
 static inline void dec_valid_block_count(struct f2fs_sb_info *sbi,
 						struct inode *inode,
 						block_t count)
@@ -2413,9 +2418,9 @@ static inline void dec_valid_block_count(struct f2fs_sb_info *sbi,
 
 	spin_lock(&sbi->stat_lock);
 	if (unlikely(sbi->total_valid_block_count < count)) {
-		f2fs_msg(sbi->sb, KERN_WARNING,
-			 "Inconsistent total_valid_block_count:%u, ino:%lu, count:%u",
-			 sbi->total_valid_block_count, inode->i_ino, count);
+		f2fs_warn(sbi,
+			  "Inconsistent total_valid_block_count:%u, ino:%lu, count:%u",
+			  sbi->total_valid_block_count, inode->i_ino, count);
 		sbi->total_valid_block_count = 0;
 		set_sbi_flag(sbi, SBI_NEED_FSCK);
 	} else {
