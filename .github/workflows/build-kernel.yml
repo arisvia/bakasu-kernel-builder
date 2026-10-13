@@ -30,10 +30,10 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout Builder Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Load Device Profile
         run: |
@@ -61,9 +61,8 @@ jobs:
             ARCH="arm64"
             KERNEL_IMAGE_NAME="Image.gz-dtb"
             KERNEL_VERSION_TYPE="4.19"
-            CLANG_BRANCH="android13-release"
-            CLANG_DIR_NAME="clang-r450784d"
-            GCC_BRANCH="android12L-release"
+            CLANG_BRANCH="main"
+            CLANG_DIR_NAME="clang-r547379"
             ANYKERNEL3_REPO="https://github.com/osm0sis/AnyKernel3"
             ANYKERNEL3_BRANCH="master"
             KSU_HOOK_METHOD="manual"
@@ -78,9 +77,8 @@ jobs:
           echo "ARCH=${ARCH:-arm64}" >> $GITHUB_ENV
           echo "KERNEL_IMAGE_NAME=${KERNEL_IMAGE_NAME:-Image.gz-dtb}" >> $GITHUB_ENV
           echo "KERNEL_VERSION_TYPE=${KERNEL_VERSION_TYPE:-4.19}" >> $GITHUB_ENV
-          echo "CLANG_BRANCH=${CLANG_BRANCH:-android13-release}" >> $GITHUB_ENV
-          echo "CLANG_DIR_NAME=${CLANG_DIR_NAME:-clang-r450784d}" >> $GITHUB_ENV
-          echo "GCC_BRANCH=${GCC_BRANCH:-android12L-release}" >> $GITHUB_ENV
+          echo "CLANG_BRANCH=${CLANG_BRANCH:-main}" >> $GITHUB_ENV
+          echo "CLANG_DIR_NAME=${CLANG_DIR_NAME:-clang-r547379}" >> $GITHUB_ENV
           echo "ANYKERNEL3_REPO=${ANYKERNEL3_REPO:-https://github.com/osm0sis/AnyKernel3}" >> $GITHUB_ENV
           echo "ANYKERNEL3_BRANCH=${ANYKERNEL3_BRANCH:-master}" >> $GITHUB_ENV
           echo "KSU_HOOK_METHOD=${KSU_HOOK_METHOD:-manual}" >> $GITHUB_ENV
@@ -90,32 +88,30 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends \
             bc bison build-essential ccache curl flex git \
-            libelf-dev libssl-dev libncurses-dev make python3 \
-            device-tree-compiler zip unzip tar patch
+            libelf-dev libssl-dev libncurses-dev make python3 python-is-python3 \
+            device-tree-compiler zip unzip tar patch \
+            binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi
 
-      - name: Setup Toolchain (AOSP Clang & GCC)
+      - name: Setup Toolchain (AOSP Clang / LLVM)
         run: |
           mkdir -p toolchain
-          echo "[+] Fetching AOSP Clang (${{ env.CLANG_BRANCH }})..."
-          git clone -q --depth=1 --single-branch \
+          echo "[+] Fetching AOSP Clang (${{ env.CLANG_BRANCH }} / ${{ env.CLANG_DIR_NAME }})..."
+          if git clone -q --depth=1 --filter=blob:none --sparse --single-branch \
             https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 \
-            -b "${{ env.CLANG_BRANCH }}" toolchain/clang-repo
+            -b "${{ env.CLANG_BRANCH }}" toolchain/clang-repo 2>/dev/null; then
+            git -C toolchain/clang-repo sparse-checkout set "${{ env.CLANG_DIR_NAME }}"
+          else
+            rm -rf toolchain/clang-repo
+            git clone -q --depth=1 --single-branch \
+              https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 \
+              -b "${{ env.CLANG_BRANCH }}" toolchain/clang-repo
+          fi
           CLANG_DIR="$(pwd)/toolchain/clang-repo/${{ env.CLANG_DIR_NAME }}"
-
-          echo "[+] Fetching GCC aarch64..."
-          git clone -q --depth=1 --single-branch \
-            https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 \
-            -b "${{ env.GCC_BRANCH }}" toolchain/gcc64
-
-          echo "[+] Fetching GCC arm32..."
-          git clone -q --depth=1 --single-branch \
-            https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 \
-            -b "${{ env.GCC_BRANCH }}" toolchain/gcc32
+          "$CLANG_DIR/bin/clang" --version
 
           echo "TOOLCHAIN_DIR=$(pwd)/toolchain" >> $GITHUB_ENV
           echo "CLANG_DIR=$CLANG_DIR" >> $GITHUB_ENV
-          echo "$CLANG_DIR/bin:$(pwd)/toolchain/gcc64/bin:$(pwd)/toolchain/gcc32/bin" >> $GITHUB_PATH
-
+          echo "$CLANG_DIR/bin" >> $GITHUB_PATH
       - name: Clone Kernel Source
         run: |
           echo "[+] Cloning ${{ env.KERNEL_REPO }} (branch: ${{ env.KERNEL_BRANCH }})..."
@@ -142,7 +138,7 @@ jobs:
       - name: Build Kernel
         run: |
           cd kernel-source
-          export PATH="${{ env.CLANG_DIR }}/bin:${{ env.TOOLCHAIN_DIR }}/gcc64/bin:${{ env.TOOLCHAIN_DIR }}/gcc32/bin:$PATH"
+          export PATH="${{ env.CLANG_DIR }}/bin:$PATH"
           export ARCH=${{ env.ARCH }}
           export SUBARCH=${{ env.ARCH }}
           export KBUILD_BUILD_USER=kernel
@@ -150,10 +146,20 @@ jobs:
 
           mkdir -p out
 
+          MAKE_ARGS=(
+            O=out
+            ARCH="${{ env.ARCH }}"
+            CC="clang"
+            LD="ld.lld"
+            LLVM=1
+            LLVM_IAS=1
+            CLANG_TRIPLE="aarch64-linux-gnu-"
+            CROSS_COMPILE="aarch64-linux-gnu-"
+            CROSS_COMPILE_COMPAT="arm-linux-gnueabi-"
+          )
+
           echo "[+] Generating defconfig: ${{ env.KERNEL_DEFCONFIG }}..."
-          make O=out ARCH=${{ env.ARCH }} \
-            CC="clang" LD=ld.lld LLVM=1 LLVM_IAS=1 \
-            ${{ env.KERNEL_DEFCONFIG }}
+          make "${MAKE_ARGS[@]}" ${{ env.KERNEL_DEFCONFIG }}
 
           if [ "${{ github.event.inputs.enable_bakasu }}" = "true" ]; then
             echo "[+] Enabling BakaSU in config..."
@@ -170,19 +176,11 @@ jobs:
                 -e KSU_TRACEPOINT_HOOK \
                 -d KSU_MANUAL_HOOK
             fi
-            make O=out ARCH=${{ env.ARCH }} \
-              CC="clang" LD=ld.lld LLVM=1 LLVM_IAS=1 \
-              olddefconfig
+            make "${MAKE_ARGS[@]}" olddefconfig
           fi
 
           echo "[+] Compiling Kernel with $(nproc) cores..."
-          make -j$(nproc) O=out ARCH=${{ env.ARCH }} \
-            CC="clang" \
-            CLANG_TRIPLE="aarch64-linux-gnu-" \
-            CROSS_COMPILE="${{ env.TOOLCHAIN_DIR }}/gcc64/bin/aarch64-linux-android-" \
-            CROSS_COMPILE_ARM32="${{ env.TOOLCHAIN_DIR }}/gcc32/bin/arm-linux-androideabi-" \
-            LD=ld.lld LLVM=1 LLVM_IAS=1
-
+          make -j$(nproc) "${MAKE_ARGS[@]}"
           echo "[+] Checking compilation outputs..."
           TARGET_FILE="out/arch/arm64/boot/${{ env.KERNEL_IMAGE_NAME }}"
           if [ ! -f "$TARGET_FILE" ]; then
@@ -206,15 +204,50 @@ jobs:
         run: |
           git clone --depth=1 "${{ env.ANYKERNEL3_REPO }}" -b "${{ env.ANYKERNEL3_BRANCH }}" anykernel3
           cd anykernel3
-          rm -rf .git .github .gitignore
+          rm -rf .git .github .gitignore ramdisk patch modules
 
           echo "[+] Copying kernel image to AnyKernel3..."
           cp "${{ env.KERNEL_OUTPUT_BIN }}" ./
 
-          # Update device check in anykernel.sh
-          sed -i "s/device.name1=.*/device.name1=${{ env.DEVICE_NAME }}/g" anykernel.sh || true
-          sed -i "s|BLOCK=.*|BLOCK=/dev/block/bootdevice/by-name/boot;|" anykernel.sh || true
-          sed -i "s/IS_SLOT_DEVICE=.*/IS_SLOT_DEVICE=0;/" anykernel.sh || true
+          cat > anykernel.sh <<EOF
+          ### AnyKernel3 Ramdisk Mod Script
+          ## osm0sis @ xda-developers
+
+          ### AnyKernel setup
+          # global properties
+          properties() { '
+          kernel.string=BakaSU Kernel for ${{ env.DEVICE_MODEL }} (${{ env.DEVICE_NAME }})
+          do.devicecheck=1
+          do.modules=0
+          do.systemless=1
+          do.cleanup=1
+          do.cleanuponabort=0
+          device.name1=${{ env.DEVICE_NAME }}
+          device.name2=
+          device.name3=
+          device.name4=
+          device.name5=
+          supported.versions=
+          supported.patchlevels=
+          supported.vendorpatchlevels=
+          '; } # end properties
+
+          ### AnyKernel install
+          # boot shell variables
+          BLOCK=/dev/block/bootdevice/by-name/boot;
+          IS_SLOT_DEVICE=0;
+          RAMDISK_COMPRESSION=auto;
+          PATCH_VBMETA_FLAG=auto;
+
+          # import functions/variables and setup patching - see for reference (DO NOT REMOVE)
+          . tools/ak3-core.sh;
+
+          # boot install (kernel-only split/flash without touching ramdisk)
+          split_boot;
+          flash_boot;
+          ## end boot install
+          EOF
+          sed -i 's/^          //' anykernel.sh
 
           DATE_TAG=$(date +%Y%m%d_%H%M%S)
           ZIP_NAME="BakaSU-${{ env.DEVICE_NAME }}-${DATE_TAG}.zip"
@@ -225,14 +258,13 @@ jobs:
           echo "BUILD_DATE=$DATE_TAG" >> $GITHUB_ENV
 
       - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.RELEASE_ZIP_NAME }}
           path: ${{ env.RELEASE_ZIP_PATH }}
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.DEVICE_NAME }}-${{ env.BUILD_DATE }}
           name: BakaSU Kernel for ${{ env.DEVICE_MODEL }} (${{ env.BUILD_DATE }})

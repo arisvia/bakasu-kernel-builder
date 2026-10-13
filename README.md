@@ -57,13 +57,13 @@
    ```bash
    DEVICE_NAME="dipper"
    DEVICE_MODEL="Xiaomi Mi 8"
-   KERNEL_REPO="https://github.com/xxx/kernel_xiaomi_sdm845-4.19"
-   KERNEL_BRANCH="main"
+   KERNEL_REPO="https://github.com/arisvia/bakasu-kernel-builder"
+   KERNEL_BRANCH="sdm845"
    ARCH="arm64"
-   KERNEL_DEFCONFIG="vendor/sdm845-perf_defconfig xiaomi/sdm845-common.config xiaomi/dipper.config"
+   KERNEL_DEFCONFIG="vendor/sdm845-perf_defconfig vendor/xiaomi/sdm845-common.config vendor/xiaomi/dipper.config"
    KERNEL_IMAGE_NAME="Image.gz-dtb"
-   CLANG_VERSION="r510016"
-   CLANG_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r510016.tar.gz"
+   CLANG_BRANCH="main"
+   CLANG_DIR_NAME="clang-r547379"
    KSU_HOOK_METHOD="manual" # 5.10+ GKI 内核填写 tracepoint
    ANYKERNEL3_REPO="https://github.com/osm0sis/AnyKernel3"
    ANYKERNEL3_BRANCH="master"
