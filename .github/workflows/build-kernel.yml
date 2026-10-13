@@ -1,4 +1,4 @@
-name: Build BakaSU Kernel
+name: Build Kernel
 
 on:
   workflow_dispatch:
@@ -20,11 +20,16 @@ on:
           - 'release'
           - 'nightly'
           - 'artifact_only'
-      enable_bakasu:
-        description: 'Enable BakaSU integration'
+      su_type:
+        description: 'Superuser / Root Solution (bakasu: BakaSU / ksu_next: KernelSU-Next / ksu: Official KernelSU / none: Clean Kernel)'
         required: true
-        type: boolean
-        default: true
+        type: choice
+        default: 'bakasu'
+        options:
+          - 'bakasu'
+          - 'ksu_next'
+          - 'ksu'
+          - 'none'
       enable_docker:
         description: 'Enable Docker / LXC Container Kernel Configs (~250KB)'
         required: false
@@ -47,13 +52,6 @@ on:
         required: false
         type: string
         default: ''
-  push:
-    branches:
-      - sdm845
-    paths-ignore:
-      - '**.md'
-      - '**.txt'
-      - '.gitignore'
   schedule:
     - cron: '0 20 * * *'
 permissions:
@@ -78,25 +76,30 @@ jobs:
             echo "[+] Nightly schedule triggered"
             RELEASE_MODE="nightly"
             DEVICE="polaris"
-            ENABLE_BAKASU="true"
-            ENABLE_DOCKER="false"
-          elif [ "$EVENT_NAME" = "push" ]; then
-            echo "[+] Push triggered (CI build test only, no release)"
-            RELEASE_MODE="artifact_only"
-            DEVICE="polaris"
-            ENABLE_BAKASU="true"
+            SU_TYPE="bakasu"
             ENABLE_DOCKER="false"
           else
             RELEASE_MODE="${{ github.event.inputs.release_mode }}"
             DEVICE="${{ github.event.inputs.device }}"
-            ENABLE_BAKASU="${{ github.event.inputs.enable_bakasu }}"
+            SU_TYPE="${{ github.event.inputs.su_type }}"
             ENABLE_DOCKER="${{ github.event.inputs.enable_docker }}"
           fi
 
+          case "$SU_TYPE" in
+            bakasu) SU_LABEL="BakaSU" ;;
+            ksu_next) SU_LABEL="KernelSU-Next" ;;
+            ksu) SU_LABEL="KernelSU" ;;
+            none) SU_LABEL="Vanilla" ;;
+            *) SU_LABEL="BakaSU" ;;
+          esac
+
           echo "RELEASE_MODE=$RELEASE_MODE" >> $GITHUB_ENV
-          echo "ENABLE_BAKASU=$ENABLE_BAKASU" >> $GITHUB_ENV
+          echo "SU_TYPE=$SU_TYPE" >> $GITHUB_ENV
+          echo "SU_LABEL=$SU_LABEL" >> $GITHUB_ENV
           echo "ENABLE_DOCKER=$ENABLE_DOCKER" >> $GITHUB_ENV
           echo "Requested device profile: $DEVICE"
+          echo "Superuser provider: $SU_LABEL ($SU_TYPE)"
+
 
           if [ "$DEVICE" != "custom" ]; then
             CONFIG_FILE="devices/${DEVICE}.env"
@@ -208,16 +211,26 @@ jobs:
           echo "[+] Cloning ${{ env.KERNEL_REPO }} (branch: ${{ env.KERNEL_BRANCH }})..."
           git clone --depth=1 "${{ env.KERNEL_REPO }}" -b "${{ env.KERNEL_BRANCH }}" kernel-source
 
-      - name: Integrate BakaSU
-        if: ${{ env.ENABLE_BAKASU == 'true' }}
+      - name: Integrate Superuser Driver
+        if: ${{ env.SU_TYPE != 'none' }}
         run: |
           cd kernel-source
-          echo "[+] Installing BakaSU driver..."
-          curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash -
+          echo "[+] Integrating Superuser provider: ${{ env.SU_LABEL }} (${{ env.SU_TYPE }})..."
+
+          if [ "${{ env.SU_TYPE }}" = "bakasu" ]; then
+            echo "[+] Installing BakaSU driver..."
+            curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash -
+          elif [ "${{ env.SU_TYPE }}" = "ksu_next" ]; then
+            echo "[+] Installing KernelSU-Next driver..."
+            curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash - next
+          elif [ "${{ env.SU_TYPE }}" = "ksu" ]; then
+            echo "[+] Installing official KernelSU driver..."
+            curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
+          fi
 
           if [ "${{ env.KSU_HOOK_METHOD }}" = "manual" ]; then
             if grep -q "ksu_handle_execveat" fs/exec.c 2>/dev/null; then
-              echo "[+] Native BakaSU manual hooks already integrated in kernel source."
+              echo "[+] Native manual hooks already integrated in kernel source."
             elif [ -f "../patches/${{ env.KERNEL_VERSION_TYPE }}/manual-hook.patch" ]; then
               echo "[+] Applying manual hook patch..."
               patch -p1 < "../patches/${{ env.KERNEL_VERSION_TYPE }}/manual-hook.patch"
@@ -263,8 +276,8 @@ jobs:
             scripts/config --file out/.config --set-str LOCALVERSION "${{ env.FINAL_LOCALVERSION }}"
           fi
 
-          if [ "${{ env.ENABLE_BAKASU }}" = "true" ]; then
-            echo "[+] Enabling BakaSU in config..."
+          if [ "${{ env.SU_TYPE }}" != "none" ]; then
+            echo "[+] Enabling ${{ env.SU_LABEL }} in config..."
             scripts/config --file out/.config -e KSU
             if [ "${{ env.KSU_HOOK_METHOD }}" = "manual" ]; then
               scripts/config --file out/.config \
@@ -278,6 +291,9 @@ jobs:
                 -e KSU_TRACEPOINT_HOOK \
                 -d KSU_MANUAL_HOOK
             fi
+          else
+            echo "[+] Superuser disabled (clean non-root build)."
+            scripts/config --file out/.config -d KSU
           fi
 
           if [ "${{ env.ENABLE_DOCKER }}" = "true" ]; then
@@ -337,7 +353,7 @@ jobs:
           ### AnyKernel setup
           # global properties
           properties() { '
-          kernel.string=BakaSU Kernel for ${{ env.DEVICE_MODEL }} (${{ env.FINAL_LOCALVERSION }})
+          kernel.string=${{ env.SU_LABEL }} Kernel for ${{ env.DEVICE_MODEL }} (${{ env.FINAL_LOCALVERSION }})
           do.devicecheck=1
           do.modules=0
           do.systemless=1
@@ -372,9 +388,9 @@ jobs:
 
           DATE_TAG=$(date +%Y%m%d_%H%M%S)
           if [ "${{ env.RELEASE_MODE }}" = "nightly" ]; then
-            ZIP_NAME="BakaSU-${{ env.DEVICE_NAME }}-nightly.zip"
+            ZIP_NAME="${{ env.SU_LABEL }}-${{ env.DEVICE_NAME }}-nightly.zip"
           else
-            ZIP_NAME="BakaSU-${{ env.DEVICE_NAME }}-${DATE_TAG}.zip"
+            ZIP_NAME="${{ env.SU_LABEL }}-${{ env.DEVICE_NAME }}-${DATE_TAG}.zip"
           fi
 
           echo "RELEASE_ZIP_PATH=$(pwd)/$ZIP_NAME" >> $GITHUB_ENV
@@ -392,15 +408,15 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.DEVICE_NAME }}-${{ env.BUILD_DATE }}
-          name: BakaSU Kernel for ${{ env.DEVICE_MODEL }} (${{ env.BUILD_DATE }})
+          name: ${{ env.SU_LABEL }} Kernel for ${{ env.DEVICE_MODEL }} (${{ env.BUILD_DATE }})
           body: |
-            ### BakaSU Kernel Build Result
+            ### ${{ env.SU_LABEL }} Kernel Build Result
             - **Device**: `${{ env.DEVICE_MODEL }} (${{ env.DEVICE_NAME }})`
             - **Kernel Source**: `${{ env.KERNEL_REPO }}`
             - **Branch**: `${{ env.KERNEL_BRANCH }}`
             - **Toolchain**: AOSP Clang `${{ env.CLANG_DIR_NAME }}`
             - **Kernel Version**: `4.19.325${{ env.FINAL_LOCALVERSION }}`
-            - **BakaSU Enabled**: `${{ env.ENABLE_BAKASU }}`
+            - **Root Solution**: `${{ env.SU_LABEL }} (${{ env.SU_TYPE }})`
             
             #### 刷入方式：
             1. 下载下方的 `.zip` 刷机包。
@@ -416,11 +432,11 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: nightly-${{ env.DEVICE_NAME }}
-          name: '[Nightly] BakaSU Kernel for ${{ env.DEVICE_MODEL }}'
+          name: '[Nightly] ${{ env.SU_LABEL }} Kernel for ${{ env.DEVICE_MODEL }}'
           prerelease: true
           make_latest: false
           body: |
-            ### [Nightly] BakaSU Kernel Rolling Build
+            ### [Nightly] ${{ env.SU_LABEL }} Kernel Rolling Build
             *自动滚动更新的每夜版内核，始终包含最新内核优化与 BakaSU 驱动。*
             
             - **Device**: `${{ env.DEVICE_MODEL }} (${{ env.DEVICE_NAME }})`
@@ -431,10 +447,10 @@ jobs:
             - **Build Date**: `${{ env.BUILD_DATE }}`
             
             #### 刷入方式：
-            1. 下载下方的 `BakaSU-${{ env.DEVICE_NAME }}-nightly.zip` 刷机包。
+            1. 下载下方的 `${{ env.RELEASE_ZIP_NAME }}` 刷机包。
             2. 重启手机进入 Axion / AOSP 官方 Recovery。
             3. 选择 `Apply update` -> `Apply from ADB`。
-            4. 电脑运行 `adb sideload BakaSU-${{ env.DEVICE_NAME }}-nightly.zip`。
+            4. 电脑运行 `adb sideload ${{ env.RELEASE_ZIP_NAME }}`。
           files: |
             ${{ env.RELEASE_ZIP_PATH }}
             ${{ env.KERNEL_OUTPUT_BIN }}
