@@ -8,9 +8,9 @@
 
 ## 📱 当前已支持设备
 
-| 设备代号 | 机型名称 | 内核版本 | 适配 ROM | 配置文件 |
-| :--- | :--- | :--- | :--- | :--- |
-| **`polaris`** | 小米 MIX 2S | Linux 4.19.y | AxionOS 2.x (Android 15/16) / LineageOS 21+ | `devices/polaris.env` |
+| 设备代号 | 机型名称 | 内核版本 | 源码分支 | 适配 ROM | 配置文件 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`polaris`** | 小米 MIX 2S | Linux 4.19.325 | `sdm845` (本仓库独立分支) | AxionOS 2.x (Android 15/16) / LineageOS 21+ | `devices/polaris.env` |
 
 ---
 

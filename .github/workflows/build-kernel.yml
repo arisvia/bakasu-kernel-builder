@@ -129,13 +129,13 @@ jobs:
           curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash -
 
           if [ "${{ env.KSU_HOOK_METHOD }}" = "manual" ]; then
-            echo "[+] Checking for manual hook patch in patches/${{ env.KERNEL_VERSION_TYPE }}..."
-            PATCH_FILE="../patches/${{ env.KERNEL_VERSION_TYPE }}/manual-hook.patch"
-            if [ -f "$PATCH_FILE" ]; then
-              echo "[+] Applying manual hook patch: $PATCH_FILE"
-              patch -p1 < "$PATCH_FILE"
+            if grep -q "ksu_handle_execveat" fs/exec.c 2>/dev/null; then
+              echo "[+] Native BakaSU manual hooks already integrated in kernel source."
+            elif [ -f "../patches/${{ env.KERNEL_VERSION_TYPE }}/manual-hook.patch" ]; then
+              echo "[+] Applying manual hook patch..."
+              patch -p1 < "../patches/${{ env.KERNEL_VERSION_TYPE }}/manual-hook.patch"
             else
-              echo "[-] Warning: No patch found at $PATCH_FILE"
+              echo "[-] Warning: Manual hooks not found in fs/exec.c and no patch file present."
             fi
           fi
 
@@ -151,7 +151,9 @@ jobs:
           mkdir -p out
 
           echo "[+] Generating defconfig: ${{ env.KERNEL_DEFCONFIG }}..."
-          make O=out ARCH=${{ env.ARCH }} ${{ env.KERNEL_DEFCONFIG }}
+          make O=out ARCH=${{ env.ARCH }} \
+            CC="clang" LD=ld.lld LLVM=1 LLVM_IAS=1 \
+            ${{ env.KERNEL_DEFCONFIG }}
 
           if [ "${{ github.event.inputs.enable_bakasu }}" = "true" ]; then
             echo "[+] Enabling BakaSU in config..."
@@ -168,6 +170,9 @@ jobs:
                 -e KSU_TRACEPOINT_HOOK \
                 -d KSU_MANUAL_HOOK
             fi
+            make O=out ARCH=${{ env.ARCH }} \
+              CC="clang" LD=ld.lld LLVM=1 LLVM_IAS=1 \
+              olddefconfig
           fi
 
           echo "[+] Compiling Kernel with $(nproc) cores..."
