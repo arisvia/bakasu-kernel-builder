@@ -19,12 +19,16 @@
 - **后台墓碑支持**：集成 **Re-Kernel v8.5**（`CONFIG_REKERNEL=y`、`CONFIG_REKERNEL_NETWORK=y`），通过 Netlink 通知机制配合 Scene / NoActive 等墓碑应用处理冻结进程的 Binder 事务、信号与 TCP 入站数据包解冻。
 - **内存与回收子系统**：
   - 完整移植 **Multi-Gen LRU (MGLRU)**（`CONFIG_LRU_GEN=y`、`CONFIG_LRU_GEN_ENABLED=y`），大幅降低 Android 15/16 后台杀进程与内存抖动；
-  - **ZRAM** 支持 `lz4` / `lz4hc` / `zstd` 压缩算法，默认压缩器设为 **`lz4`**（`CONFIG_ZRAM_DEF_COMP_LZ4=y`）并开启闲置页回写（`CONFIG_ZRAM_WRITEBACK=y`）。
+  - **ZRAM & 压缩算法升级**：升级 **LZ4 v1.10.0 + ARM64v8 汇编加速解压**（`lz4armv8.S` + `LZ4_FAST_DEC_LOOP`）与 **64-bit LZO / LZO-RLE**，默认压缩器设为 **`lz4`**（`CONFIG_ZRAM_DEF_COMP_LZ4=y`）并开启闲置页回写（`CONFIG_ZRAM_WRITEBACK=y`）。
+- **存储与 I/O 加速**：反向移植高版本 **`blk-mq` & `mq-deadline`** 调度优化（同步请求预留 25% 标签、I/O 优先级、移除冗余关中断）及 **UFS 2.1 PM QoS** 优化（移除 10ms 拖尾延迟投票、仅对 UFS 中断所在 CPU 投票）。
+- **Android 15/16 系统调用与安全补丁**：
+  - 反向移植 Linux 5.6+ **`openat2(2)`**（syscall `437`）与 Linux 5.14+ **`cgroup.kill`** 原子进程组清理接口，适配 Android 15/16 `lmkd` / Bionic 与容器运行时；
+  - 合入 **Linux Foundation CIP SLTS (`v4.19.325-cip116` .. `v4.19.325-cip136`)** 共 **3,982 个** 2025–2026 上游安全漏洞（CVE）与稳定性修复补丁，以及 Binder `kvcalloc` 防碎片化 OOM 修复。
 - **网络与协议栈**：默认开启 **TCP BBR** 拥塞控制与 **FQ / FQ_CoDel** 队列调度（`CONFIG_DEFAULT_BBR=y`），原生内置 **WireGuard**（`CONFIG_WIREGUARD=y`）。
 - **模拟器与容器扩展**：
   - 完整移植 Linux 6.14 **NTSYNC**（`CONFIG_NTSYNC=y`，`/dev/ntsync`）及 `CONFIG_BINFMT_MISC=y`，提升 Winlator / Box64 / Wine 同步原语性能；
   - Actions 构建支持一键勾选 `enable_docker` 开启全部 27 项 Docker / LXC 容器内核命名空间、Cgroups 与虚拟网络特性。
-- **编译与调度调优**：采用 AOSP **Clang 20.0.0 (`clang-r547379`) + LLD 20** 纯 LLVM 编译，开启 **Clang ThinLTO**（`CONFIG_LTO_CLANG=y` + `CONFIG_THINLTO=y`）、**300Hz** 调度时钟（`CONFIG_HZ_300=y`）、**RCU Boost**（`CONFIG_RCU_BOOST=y`）及能效工作队列（`CONFIG_WQ_POWER_EFFICIENT_DEFAULT=y`）。
+- **指令集、编译与调试裁剪**：采用 AOSP **Clang 20.0.0 (`clang-r547379`) + LLD 20** 纯 LLVM 编译，针对骁龙 845 Kryo 385 注入 **`-march=armv8.2-a+lse+crc -mtune=cortex-a75`** 硬件原子指令优化，开启 **Clang ThinLTO**、**300Hz** 调度时钟、**RCU Boost**，并彻底剥离 `CORESIGHT` / `IPC_LOGGING` / `MSM_TZ_LOG` / `CPU_BOOST` 等高通遗留调试与过时升频器开销。
 ---
 
 ## 🚀 快速上手：一键构建
