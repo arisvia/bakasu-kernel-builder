@@ -188,6 +188,10 @@ extern int del_timer_sync(struct timer_list *timer);
 
 #define del_singleshot_timer_sync(t) del_timer_sync(t)
 
+/* Modern timer API compatibility aliases (Linux 6.1+ backports) */
+#define timer_delete(t) del_timer(t)
+#define timer_delete_sync(t) del_timer_sync(t)
+
 extern void init_timers(void);
 extern void run_local_timers(void);
 struct hrtimer;
