@@ -225,8 +225,10 @@ static int ft5x46_recv_byte(struct ft5x46_data *ft5x46, int len, ...)
 {
 	int error = 0;
 	va_list varg;
-	u8 i, buf[len];
+	u8 i, buf[16];
 
+	if (len <= 0 || len > sizeof(buf))
+		return -EINVAL;
 	error = ft5x46->bops->recv(ft5x46->dev, buf, len);
 	if (error)
 		return error;
@@ -254,8 +256,10 @@ static int ft5x46_recv_block(struct ft5x46_data *ft5x46,
 static int ft5x46_send_byte(struct ft5x46_data *ft5x46, int len, ...)
 {
 	va_list varg;
-	u8 i, buf[len];
+	u8 i, buf[16];
 
+	if (len <= 0 || len > sizeof(buf))
+		return -EINVAL;
 	va_start(varg, len);
 	for (i = 0; i < len; i++)
 		buf[i] = va_arg(varg, int); /* u8 promote to int */
