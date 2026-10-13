@@ -74,7 +74,7 @@
 #include <linux/ratelimit.h>
 
 #ifdef CONFIG_REKERNEL
-#include <../rekernel/rekernel.h>
+#include "../rekernel/rekernel.h"
 #endif /* CONFIG_REKERNEL */
 #include <uapi/linux/android/binder.h>
 #include <uapi/linux/android/binderfs.h>
