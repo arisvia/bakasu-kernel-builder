@@ -42,6 +42,11 @@ on:
         description: '[Custom] Kernel Defconfig (only if device=custom)'
         required: false
         default: ''
+      custom_localversion:
+        description: 'Kernel Version Suffix (LOCALVERSION, e.g. -BakaSU-polaris; empty = auto)'
+        required: false
+        type: string
+        default: ''
   push:
     branches:
       - sdm845
@@ -136,6 +141,19 @@ jobs:
           echo "ANYKERNEL3_BRANCH=${ANYKERNEL3_BRANCH:-master}" >> $GITHUB_ENV
           echo "KSU_HOOK_METHOD=${KSU_HOOK_METHOD:-manual}" >> $GITHUB_ENV
 
+          # Determine KERNEL_LOCALVERSION
+          if [ -n "${{ github.event.inputs.custom_localversion }}" ]; then
+            INPUT_LV="${{ github.event.inputs.custom_localversion }}"
+            [[ "$INPUT_LV" != -* ]] && INPUT_LV="-$INPUT_LV"
+            FINAL_LOCALVERSION="$INPUT_LV"
+          elif [ "$RELEASE_MODE" = "nightly" ]; then
+            FINAL_LOCALVERSION="-BakaSU-${DEVICE_NAME}-nightly"
+          else
+            FINAL_LOCALVERSION="${KERNEL_LOCALVERSION:--BakaSU-${DEVICE_NAME}}"
+          fi
+          echo "FINAL_LOCALVERSION=$FINAL_LOCALVERSION" >> $GITHUB_ENV
+          echo "[+] Final kernel version suffix: $FINAL_LOCALVERSION"
+
       - name: Install System Build Dependencies
         run: |
           sudo apt-get update -qq
@@ -147,7 +165,7 @@ jobs:
 
       - name: Cache AOSP Clang Toolchain
         id: cache-clang
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: toolchain/clang-repo/${{ env.CLANG_DIR_NAME }}
           key: clang-${{ env.CLANG_BRANCH }}-${{ env.CLANG_DIR_NAME }}
@@ -178,7 +196,7 @@ jobs:
           echo "$CLANG_DIR/bin" >> $GITHUB_PATH
 
       - name: Setup Ccache Build Cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ccache
           key: ccache-${{ env.DEVICE_NAME }}-${{ env.KERNEL_BRANCH }}-${{ github.sha }}
@@ -239,6 +257,11 @@ jobs:
 
           echo "[+] Generating defconfig: ${{ env.KERNEL_DEFCONFIG }}..."
           make "${MAKE_ARGS[@]}" ${{ env.KERNEL_DEFCONFIG }}
+
+          if [ -n "${{ env.FINAL_LOCALVERSION }}" ]; then
+            echo "[+] Setting CONFIG_LOCALVERSION to \"${{ env.FINAL_LOCALVERSION }}\"..."
+            scripts/config --file out/.config --set-str LOCALVERSION "${{ env.FINAL_LOCALVERSION }}"
+          fi
 
           if [ "${{ env.ENABLE_BAKASU }}" = "true" ]; then
             echo "[+] Enabling BakaSU in config..."
@@ -314,7 +337,7 @@ jobs:
           ### AnyKernel setup
           # global properties
           properties() { '
-          kernel.string=BakaSU Kernel for ${{ env.DEVICE_MODEL }} (${{ env.DEVICE_NAME }})
+          kernel.string=BakaSU Kernel for ${{ env.DEVICE_MODEL }} (${{ env.FINAL_LOCALVERSION }})
           do.devicecheck=1
           do.modules=0
           do.systemless=1
@@ -376,6 +399,7 @@ jobs:
             - **Kernel Source**: `${{ env.KERNEL_REPO }}`
             - **Branch**: `${{ env.KERNEL_BRANCH }}`
             - **Toolchain**: AOSP Clang `${{ env.CLANG_DIR_NAME }}`
+            - **Kernel Version**: `4.19.325${{ env.FINAL_LOCALVERSION }}`
             - **BakaSU Enabled**: `${{ env.ENABLE_BAKASU }}`
             
             #### 刷入方式：
@@ -403,6 +427,7 @@ jobs:
             - **Kernel Source**: `${{ env.KERNEL_REPO }}`
             - **Branch**: `${{ env.KERNEL_BRANCH }}`
             - **Toolchain**: AOSP Clang `${{ env.CLANG_DIR_NAME }}`
+            - **Kernel Version**: `4.19.325${{ env.FINAL_LOCALVERSION }}`
             - **Build Date**: `${{ env.BUILD_DATE }}`
             
             #### 刷入方式：
