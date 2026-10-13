@@ -23,6 +23,10 @@ choice
 	help
 	  Select the ZRAM default compression algorithm.
 
+config ZRAM_DEF_COMP_LZORLE
+	bool "lzo-rle"
+	depends on CRYPTO_LZO
+
 config ZRAM_DEF_COMP_LZO
 	bool "lzo"
 	depends on CRYPTO_LZO
@@ -47,6 +51,7 @@ endchoice
 
 config ZRAM_DEF_COMP
 	string
+	default "lzo-rle" if ZRAM_DEF_COMP_LZORLE
 	default "lzo" if ZRAM_DEF_COMP_LZO
 	default "lz4" if ZRAM_DEF_COMP_LZ4
 	default "lz4hc" if ZRAM_DEF_COMP_LZ4HC

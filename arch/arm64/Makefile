@@ -49,6 +49,9 @@ $(warning Detected assembler with broken .inst; disassembly will be unreliable)
   endif
 endif
 
+KBUILD_CFLAGS	+= $(call cc-option,-march=armv8.2-a+lse+crc)
+KBUILD_CFLAGS	+= $(call cc-option,-mtune=cortex-a75)
+KBUILD_AFLAGS	+= $(call cc-option,-march=armv8.2-a+lse+crc)
 KBUILD_CFLAGS	+= -mgeneral-regs-only
 KBUILD_CFLAGS	+= $(lseinstr) $(brokengasinst) $(compat_vdso)
 KBUILD_CFLAGS	+= -fno-asynchronous-unwind-tables

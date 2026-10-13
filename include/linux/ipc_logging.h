@@ -221,7 +221,7 @@ int ipc_log_context_destroy(void *ctxt);
 
 static inline void *ipc_log_context_create(int max_num_pages,
 	const char *modname, uint16_t user_version)
-{ return NULL; }
+{ return (void *)1UL; }
 
 static inline void msg_encode_start(struct encode_context *ectxt,
 	uint32_t type) { }
@@ -247,7 +247,7 @@ static inline void msg_encode_end(struct encode_context *ectxt) { }
 static inline void ipc_log_write(void *ctxt, struct encode_context *ectxt) { }
 
 static inline int ipc_log_string(void *ilctxt, const char *fmt, ...)
-{ return -EINVAL; }
+{ return 0; }
 
 static inline int ipc_log_extract(void *ilctxt, char *buff, int size)
 { return -EINVAL; }

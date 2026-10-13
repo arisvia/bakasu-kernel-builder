@@ -1093,6 +1093,19 @@ static inline unsigned int blk_rq_zone_is_seq(struct request *rq)
 {
 	return blk_queue_zone_is_seq(rq->q, blk_rq_pos(rq));
 }
+
+static inline bool blk_rq_is_seq_zoned_write(struct request *rq)
+{
+	return blk_rq_is_passthrough(rq) ? false :
+		op_is_write(req_op(rq)) &&
+		blk_queue_is_zoned(rq->q) &&
+		blk_rq_zone_is_seq(rq);
+}
+#else /* CONFIG_BLK_DEV_ZONED */
+static inline bool blk_rq_is_seq_zoned_write(struct request *rq)
+{
+	return false;
+}
 #endif /* CONFIG_BLK_DEV_ZONED */
 
 /*
@@ -1480,6 +1493,22 @@ static inline unsigned short queue_max_segments(struct request_queue *q)
 static inline unsigned short queue_max_discard_segments(struct request_queue *q)
 {
 	return q->limits.max_discard_segments;
+}
+
+/*
+ * Two cases of handling DISCARD merge:
+ * If max_discard_segments > 1, the driver takes every bio
+ * as a range and send them to controller together. The ranges
+ * needn't to be contiguous.
+ * Otherwise, the bios/requests will be handled as same as
+ * others which should be contiguous.
+ */
+static inline bool blk_discard_mergable(struct request *req)
+{
+	if (req_op(req) == REQ_OP_DISCARD &&
+	    queue_max_discard_segments(req->q) > 1)
+		return true;
+	return false;
 }
 
 static inline unsigned int queue_max_segment_size(struct request_queue *q)
