@@ -4,9 +4,32 @@ on:
   workflow_dispatch:
     inputs:
       device:
-        description: 'Target Device Profile (filename without .env in devices/)'
+        description: 'Target Device Profile'
         required: true
+        type: choice
         default: 'polaris'
+        options:
+          - 'polaris'
+          - 'custom'
+      release_mode:
+        description: 'Publish Mode (release: tagged Release / nightly: rolling prerelease / artifact_only: no release)'
+        required: true
+        type: choice
+        default: 'release'
+        options:
+          - 'release'
+          - 'nightly'
+          - 'artifact_only'
+      enable_bakasu:
+        description: 'Enable BakaSU integration'
+        required: true
+        type: boolean
+        default: true
+      enable_docker:
+        description: 'Enable Docker / LXC Container Kernel Configs (~250KB)'
+        required: false
+        type: boolean
+        default: false
       custom_repo:
         description: '[Custom] Kernel Git Repo URL (only if device=custom)'
         required: false
@@ -19,17 +42,11 @@ on:
         description: '[Custom] Kernel Defconfig (only if device=custom)'
         required: false
         default: ''
-      enable_bakasu:
-        description: 'Enable BakaSU integration'
-        required: true
-        type: boolean
-        default: true
-      enable_docker:
-        description: 'Enable Docker / LXC Container Kernel Configs (~250KB)'
-        required: false
-        type: boolean
-        default: false
-
+  push:
+    branches:
+      - sdm845
+  schedule:
+    - cron: '0 20 * * *'
 permissions:
   contents: write
 
@@ -42,7 +59,31 @@ jobs:
 
       - name: Load Device Profile
         run: |
-          DEVICE="${{ github.event.inputs.device }}"
+          EVENT_NAME="${{ github.event_name }}"
+          echo "Event trigger: $EVENT_NAME"
+
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            echo "[+] Nightly schedule triggered"
+            RELEASE_MODE="nightly"
+            DEVICE="polaris"
+            ENABLE_BAKASU="true"
+            ENABLE_DOCKER="false"
+          elif [ "$EVENT_NAME" = "push" ]; then
+            echo "[+] Push triggered (CI build test only, no release)"
+            RELEASE_MODE="artifact_only"
+            DEVICE="polaris"
+            ENABLE_BAKASU="true"
+            ENABLE_DOCKER="false"
+          else
+            RELEASE_MODE="${{ github.event.inputs.release_mode }}"
+            DEVICE="${{ github.event.inputs.device }}"
+            ENABLE_BAKASU="${{ github.event.inputs.enable_bakasu }}"
+            ENABLE_DOCKER="${{ github.event.inputs.enable_docker }}"
+          fi
+
+          echo "RELEASE_MODE=$RELEASE_MODE" >> $GITHUB_ENV
+          echo "ENABLE_BAKASU=$ENABLE_BAKASU" >> $GITHUB_ENV
+          echo "ENABLE_DOCKER=$ENABLE_DOCKER" >> $GITHUB_ENV
           echo "Requested device profile: $DEVICE"
 
           if [ "$DEVICE" != "custom" ]; then
@@ -123,7 +164,7 @@ jobs:
           git clone --depth=1 "${{ env.KERNEL_REPO }}" -b "${{ env.KERNEL_BRANCH }}" kernel-source
 
       - name: Integrate BakaSU
-        if: ${{ github.event.inputs.enable_bakasu }}
+        if: ${{ env.ENABLE_BAKASU == 'true' }}
         run: |
           cd kernel-source
           echo "[+] Installing BakaSU driver..."
@@ -166,7 +207,7 @@ jobs:
           echo "[+] Generating defconfig: ${{ env.KERNEL_DEFCONFIG }}..."
           make "${MAKE_ARGS[@]}" ${{ env.KERNEL_DEFCONFIG }}
 
-          if [ "${{ github.event.inputs.enable_bakasu }}" = "true" ]; then
+          if [ "${{ env.ENABLE_BAKASU }}" = "true" ]; then
             echo "[+] Enabling BakaSU in config..."
             scripts/config --file out/.config -e KSU
             if [ "${{ env.KSU_HOOK_METHOD }}" = "manual" ]; then
@@ -183,7 +224,7 @@ jobs:
             fi
           fi
 
-          if [ "${{ github.event.inputs.enable_docker }}" = "true" ]; then
+          if [ "${{ env.ENABLE_DOCKER }}" = "true" ]; then
             echo "[+] Enabling Docker / LXC Container kernel configs..."
             scripts/config --file out/.config \
               -e NAMESPACES -e UTS_NS -e IPC_NS -e USER_NS -e PID_NS -e NET_NS \
@@ -271,8 +312,11 @@ jobs:
           sed -i 's/^          //' anykernel.sh
 
           DATE_TAG=$(date +%Y%m%d_%H%M%S)
-          ZIP_NAME="BakaSU-${{ env.DEVICE_NAME }}-${DATE_TAG}.zip"
-          zip -r9 "$ZIP_NAME" * -x README.md *placeholder
+          if [ "${{ env.RELEASE_MODE }}" = "nightly" ]; then
+            ZIP_NAME="BakaSU-${{ env.DEVICE_NAME }}-nightly.zip"
+          else
+            ZIP_NAME="BakaSU-${{ env.DEVICE_NAME }}-${DATE_TAG}.zip"
+          fi
 
           echo "RELEASE_ZIP_PATH=$(pwd)/$ZIP_NAME" >> $GITHUB_ENV
           echo "RELEASE_ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
@@ -284,7 +328,8 @@ jobs:
           name: ${{ env.RELEASE_ZIP_NAME }}
           path: ${{ env.RELEASE_ZIP_PATH }}
 
-      - name: Publish GitHub Release
+      - name: Publish Official GitHub Release
+        if: env.RELEASE_MODE == 'release'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.DEVICE_NAME }}-${{ env.BUILD_DATE }}
@@ -295,13 +340,40 @@ jobs:
             - **Kernel Source**: `${{ env.KERNEL_REPO }}`
             - **Branch**: `${{ env.KERNEL_BRANCH }}`
             - **Toolchain**: AOSP Clang `${{ env.CLANG_DIR_NAME }}`
-            - **BakaSU Enabled**: `${{ github.event.inputs.enable_bakasu }}`
+            - **BakaSU Enabled**: `${{ env.ENABLE_BAKASU }}`
             
             #### 刷入方式：
             1. 下载下方的 `.zip` 刷机包。
             2. 重启手机进入 Axion / AOSP 官方 Recovery。
             3. 选择 `Apply update` -> `Apply from ADB`。
             4. 电脑运行 `adb sideload <文件名>.zip`。
+          files: |
+            ${{ env.RELEASE_ZIP_PATH }}
+            ${{ env.KERNEL_OUTPUT_BIN }}
+
+      - name: Publish Rolling Nightly GitHub Release
+        if: env.RELEASE_MODE == 'nightly'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: nightly-${{ env.DEVICE_NAME }}
+          name: '[Nightly] BakaSU Kernel for ${{ env.DEVICE_MODEL }}'
+          prerelease: true
+          make_latest: false
+          body: |
+            ### [Nightly] BakaSU Kernel Rolling Build
+            *自动滚动更新的每夜版内核，始终包含最新内核优化与 BakaSU 驱动。*
+            
+            - **Device**: `${{ env.DEVICE_MODEL }} (${{ env.DEVICE_NAME }})`
+            - **Kernel Source**: `${{ env.KERNEL_REPO }}`
+            - **Branch**: `${{ env.KERNEL_BRANCH }}`
+            - **Toolchain**: AOSP Clang `${{ env.CLANG_DIR_NAME }}`
+            - **Build Date**: `${{ env.BUILD_DATE }}`
+            
+            #### 刷入方式：
+            1. 下载下方的 `BakaSU-${{ env.DEVICE_NAME }}-nightly.zip` 刷机包。
+            2. 重启手机进入 Axion / AOSP 官方 Recovery。
+            3. 选择 `Apply update` -> `Apply from ADB`。
+            4. 电脑运行 `adb sideload BakaSU-${{ env.DEVICE_NAME }}-nightly.zip`。
           files: |
             ${{ env.RELEASE_ZIP_PATH }}
             ${{ env.KERNEL_OUTPUT_BIN }}
