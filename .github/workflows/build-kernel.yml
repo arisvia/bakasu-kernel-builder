@@ -390,8 +390,8 @@ jobs:
 
           ui_print() {
             until [ -z "$1" ]; do
-              echo "ui_print $1" >> /proc/self/fd/$OUTFD
-              echo "ui_print" >> /proc/self/fd/$OUTFD
+              echo "ui_print $1" >&$OUTFD 2>/dev/null || echo "ui_print $1" >> /proc/self/fd/$OUTFD 2>/dev/null || true
+              echo "ui_print" >&$OUTFD 2>/dev/null || echo "ui_print" >> /proc/self/fd/$OUTFD 2>/dev/null || true
               shift
             done
           }
@@ -419,7 +419,7 @@ jobs:
           # =========================================================
           # Diagnostic Probe (Conditionally injected when enable_debug=true)
           # =========================================================
-          PROBE_ENABLED="${{ env.ENABLE_DEBUG }}"
+          PROBE_ENABLED="${{ github.event.inputs.enable_debug }}"
           if [ "$PROBE_ENABLED" = "true" ]; then
             ui_print "[*] [DEBUG MODE] Probing for previous boot crash logs..."
             mount -t pstore pstore /sys/fs/pstore 2>/dev/null
