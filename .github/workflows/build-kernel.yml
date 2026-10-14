@@ -352,6 +352,9 @@ jobs:
             echo "[+] Injecting official 64-bit ARM64 tools for modern 64-bit recovery..."
             curl -sSL "https://github.com/osm0sis/AnyKernel3/archive/refs/heads/arm64-tools.tar.gz" | tar -xz -C tools/ --strip-components=1
             chmod +x tools/*
+            # Remove noexec restrictions and add Android 15/16 recovery fallback in update-binary
+            sed -i '/setup_bb() {/a \  mount -o remount,exec /tmp 2>/dev/null; mount -o remount,exec /postinstall 2>/dev/null; mount -o remount,exec $AKHOME 2>/dev/null; setenforce 0 2>/dev/null;' META-INF/com/google/android/update-binary
+            sed -i 's/\$bb --install -s bin;/\$bb --install -s bin 2>\/dev\/null; if [ -z "$(ls bin 2>\/dev\/null)" ]; then which toybox >\/dev\/null 2>\&1 \&\& toybox --install -s bin 2>\/dev\/null; [ -f bin\/sh ] || ln -s \/system\/bin\/sh bin\/sh 2>\/dev\/null; [ -f bin\/ash ] || ln -s \/system\/bin\/sh bin\/ash 2>\/dev\/null; fi; return 0;/' META-INF/com/google/android/update-binary
           fi
 
           echo "[+] Copying kernel image to AnyKernel3..."
