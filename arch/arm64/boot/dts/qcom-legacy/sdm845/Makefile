@@ -17,6 +17,19 @@ dtb-$(CONFIG_ARCH_SDM845) += \
 	xiaomi/beryllium/beryllium-mp-v2.1.dtb \
 	xiaomi/dipper/dipper-mp-v2.1.dtb \
 	xiaomi/equuleus/equuleus-mp-v2.1.dtb \
+	xiaomi/polaris/polaris-p0.dtb \
+	xiaomi/polaris/polaris-p0-v2.dtb \
+	xiaomi/polaris/polaris-p1.dtb \
+	xiaomi/polaris/polaris-p1-v2.dtb \
+	xiaomi/polaris/polaris-p1-v2.1.dtb \
+	xiaomi/polaris/polaris-p2.dtb \
+	xiaomi/polaris/polaris-p2-v2.dtb \
+	xiaomi/polaris/polaris-p2-v2.1.dtb \
+	xiaomi/polaris/polaris-p3.dtb \
+	xiaomi/polaris/polaris-p3-v2.dtb \
+	xiaomi/polaris/polaris-p3-v2.1.dtb \
+	xiaomi/polaris/polaris-mp.dtb \
+	xiaomi/polaris/polaris-mp-v2.dtb \
 	xiaomi/polaris/polaris-mp-v2.1.dtb \
 	xiaomi/ursa/ursa-mp-v2.1.dtb
 endif

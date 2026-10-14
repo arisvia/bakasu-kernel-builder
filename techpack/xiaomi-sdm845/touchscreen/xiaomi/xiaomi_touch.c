@@ -149,9 +149,11 @@ int xiaomitouch_register_modedata(struct xiaomi_touch_interface *data)
 	struct xiaomi_touch_interface *touch_data = NULL;
 
 	if (!touch_pdata)
-		ret = -ENOMEM;
+		return -ENODEV;
 
 	touch_data = touch_pdata->touch_data;
+	if (!touch_data)
+		return -ENODEV;
 	pr_info("%s\n", __func__);
 
 	mutex_lock(&xiaomi_touch_dev.mutex);
