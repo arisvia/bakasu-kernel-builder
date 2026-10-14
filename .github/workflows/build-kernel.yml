@@ -352,9 +352,37 @@ jobs:
             echo "[+] Injecting official 64-bit ARM64 tools for modern 64-bit recovery..."
             curl -sSL "https://github.com/osm0sis/AnyKernel3/archive/refs/heads/arm64-tools.tar.gz" | tar -xz -C tools/ --strip-components=1
             chmod +x tools/*
-            # Remove noexec restrictions and add Android 15/16 recovery fallback in update-binary
-            sed -i '/setup_bb() {/a \  mount -o remount,exec /tmp 2>/dev/null; mount -o remount,exec /postinstall 2>/dev/null; mount -o remount,exec $AKHOME 2>/dev/null; setenforce 0 2>/dev/null;' META-INF/com/google/android/update-binary
-            sed -i 's/\$bb --install -s bin;/\$bb --install -s bin 2>\/dev\/null; if [ -z "$(ls bin 2>\/dev\/null)" ]; then which toybox >\/dev\/null 2>\&1 \&\& toybox --install -s bin 2>\/dev\/null; [ -f bin\/sh ] || ln -s \/system\/bin\/sh bin\/sh 2>\/dev\/null; [ -f bin\/ash ] || ln -s \/system\/bin\/sh bin\/ash 2>\/dev\/null; fi; return 0;/' META-INF/com/google/android/update-binary
+            python3 - << 'PYEOF'
+            with open("META-INF/com/google/android/update-binary", "r") as f:
+                c = f.read()
+            s_old = c[c.find("setup_bb() {"):c.find("debugging() {")]
+            s_new = """setup_bb() {
+              local app bb;
+              mount -o remount,exec /tmp 2>/dev/null;
+              mount -o remount,exec /postinstall 2>/dev/null;
+              mount -o remount,exec $AKHOME 2>/dev/null;
+              setenforce 0 2>/dev/null;
+              bb=$AKHOME/tools/busybox;
+              chmod 755 $bb 2>/dev/null;
+              chmod 755 $AKHOME/tools/* 2>/dev/null;
+              mkdir -p $AKHOME/bin;
+              $bb --install -s $AKHOME/bin 2>/dev/null;
+              for app in ash sh awk sed grep cat cp mv rm mkdir chmod ls dd tar gzip cut tr head tail sleep date find; do
+                if [ ! -e $AKHOME/bin/$app ]; then
+                  ln -s $bb $AKHOME/bin/$app 2>/dev/null || ln -s /system/bin/$app $AKHOME/bin/$app 2>/dev/null || true;
+                fi;
+              done;
+              [ -e $AKHOME/bin/ash ] || ln -s $bb $AKHOME/bin/ash 2>/dev/null || ln -s /system/bin/sh $AKHOME/bin/ash 2>/dev/null || true;
+              [ -e $AKHOME/bin/sh ] || ln -s $bb $AKHOME/bin/sh 2>/dev/null || ln -s /system/bin/sh $AKHOME/bin/sh 2>/dev/null || true;
+              return 0;
+            }
+            """
+            c = c.replace(s_old, s_new)
+            call_old = "setup_bb;\nif [ $? != 0 -o -z \"$(ls bin)\" ]; then\n  abort \"Busybox setup failed. Aborting...\";\nfi;"
+            c = c.replace(call_old, "setup_bb;")
+            with open("META-INF/com/google/android/update-binary", "w") as f:
+                f.write(c)
+            PYEOF
           fi
 
           echo "[+] Copying kernel image to AnyKernel3..."
