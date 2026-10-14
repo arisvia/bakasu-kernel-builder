@@ -323,6 +323,9 @@ jobs:
 
           make "${MAKE_ARGS[@]}" olddefconfig
 
+          echo "[+] Validating critical runtime configurations in generated .config:"
+          grep -E '^(CONFIG_EROFS_FS|CONFIG_PERF_EVENTS|CONFIG_UPROBES|CONFIG_UPROBE_EVENTS|CONFIG_BPF_EVENTS|CONFIG_NET_ACT_BPF)=' out/.config || true
+
           echo "[+] Compiling Kernel with $(nproc) cores..."
           make -j$(nproc) "${MAKE_ARGS[@]}"
           echo "[+] Checking compilation outputs..."
