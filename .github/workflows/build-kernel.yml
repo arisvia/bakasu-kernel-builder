@@ -84,11 +84,13 @@ jobs:
             DEVICE="polaris"
             SU_TYPE="bakasu"
             ENABLE_DOCKER="false"
+            ENABLE_DEBUG="false"
           else
             RELEASE_MODE="${{ github.event.inputs.release_mode }}"
             DEVICE="${{ github.event.inputs.device }}"
             SU_TYPE="${{ github.event.inputs.su_type }}"
             ENABLE_DOCKER="${{ github.event.inputs.enable_docker }}"
+            ENABLE_DEBUG="${{ github.event.inputs.enable_debug }}"
           fi
 
           case "$SU_TYPE" in
@@ -104,6 +106,7 @@ jobs:
           echo "SU_TYPE=$SU_TYPE" >> $GITHUB_ENV
           echo "SU_LABEL=$SU_LABEL" >> $GITHUB_ENV
           echo "ENABLE_DOCKER=$ENABLE_DOCKER" >> $GITHUB_ENV
+          echo "ENABLE_DEBUG=${ENABLE_DEBUG:-false}" >> $GITHUB_ENV
           echo "Requested device profile: $DEVICE"
           echo "Superuser provider: $SU_LABEL ($SU_TYPE)"
 
@@ -419,7 +422,7 @@ jobs:
           # =========================================================
           # Diagnostic Probe (Conditionally injected when enable_debug=true)
           # =========================================================
-          PROBE_ENABLED="${{ github.event.inputs.enable_debug }}"
+          PROBE_ENABLED="${{ env.ENABLE_DEBUG }}"
           if [ "$PROBE_ENABLED" = "true" ]; then
             ui_print "[*] [DEBUG MODE] Probing for previous boot crash logs..."
             mount -t pstore pstore /sys/fs/pstore 2>/dev/null
