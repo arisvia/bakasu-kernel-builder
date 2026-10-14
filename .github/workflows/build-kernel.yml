@@ -134,8 +134,6 @@ jobs:
             KERNEL_VERSION_TYPE="4.19"
             CLANG_BRANCH="main"
             CLANG_DIR_NAME="clang-r547379"
-            ANYKERNEL3_REPO="https://github.com/osm0sis/AnyKernel3"
-            ANYKERNEL3_BRANCH="master"
             KSU_HOOK_METHOD="manual"
           fi
 
@@ -150,8 +148,6 @@ jobs:
           echo "KERNEL_VERSION_TYPE=${KERNEL_VERSION_TYPE:-4.19}" >> $GITHUB_ENV
           echo "CLANG_BRANCH=${CLANG_BRANCH:-main}" >> $GITHUB_ENV
           echo "CLANG_DIR_NAME=${CLANG_DIR_NAME:-clang-r547379}" >> $GITHUB_ENV
-          echo "ANYKERNEL3_REPO=${ANYKERNEL3_REPO:-https://github.com/osm0sis/AnyKernel3}" >> $GITHUB_ENV
-          echo "ANYKERNEL3_BRANCH=${ANYKERNEL3_BRANCH:-master}" >> $GITHUB_ENV
           echo "KSU_HOOK_METHOD=${KSU_HOOK_METHOD:-manual}" >> $GITHUB_ENV
           echo "CHECK_CONFIGS=${CHECK_CONFIGS:-}" >> $GITHUB_ENV
 
