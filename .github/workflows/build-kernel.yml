@@ -324,7 +324,27 @@ jobs:
           make "${MAKE_ARGS[@]}" olddefconfig
 
           echo "[+] Validating critical runtime configurations in generated .config:"
-          grep -E '^(CONFIG_EROFS_FS|CONFIG_PERF_EVENTS|CONFIG_UPROBES|CONFIG_UPROBE_EVENTS|CONFIG_BPF_EVENTS|CONFIG_NET_ACT_BPF)=' out/.config || true
+          CRITICAL_CONFIGS=(
+            CONFIG_EROFS_FS
+            CONFIG_PERF_EVENTS
+            CONFIG_UPROBES
+            CONFIG_UPROBE_EVENTS
+            CONFIG_BPF_EVENTS
+            CONFIG_NET_ACT_BPF
+          )
+          MISSING_CONFIGS=0
+          for cfg in "${CRITICAL_CONFIGS[@]}"; do
+            if grep -q "^${cfg}=y" out/.config; then
+              echo "  [✓] $cfg is enabled (=y)"
+            else
+              echo "  [✗] FATAL: $cfg is MISSING or was dropped by olddefconfig!"
+              MISSING_CONFIGS=$((MISSING_CONFIGS + 1))
+            fi
+          done
+          if [ "$MISSING_CONFIGS" -ne 0 ]; then
+            echo "[-] Build aborted: $MISSING_CONFIGS critical Android 15/16 configurations are missing in .config."
+            exit 1
+          fi
 
           echo "[+] Compiling Kernel with $(nproc) cores..."
           make -j$(nproc) "${MAKE_ARGS[@]}"
