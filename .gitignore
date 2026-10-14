@@ -1,5 +1,6 @@
 # Temporary & build outputs
 out/
+tmp/
 toolchain/
 *.zip
 *.img
