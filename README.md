@@ -1,6 +1,6 @@
 # kernel-builder
 
-现代化通用 Android 内核构建系统，基于 **GitHub Actions** 自动化编译与分发。原生支持主流 Root 方案（[BakaSU](https://github.com/Baka-SU/BakaSU) / [KernelSU-Next](https://github.com/rifsxd/KernelSU-Next) / [KernelSU](https://github.com/tiann/KernelSU) / 纯净无 Root 内核），生成即刷即用的 AnyKernel3 格式刷机包。
+现代化通用 Android 内核构建系统，基于 **GitHub Actions** 自动化编译与分发。原生支持主流 Root 方案（[BakaSU](https://github.com/Baka-SU/BakaSU) / [KernelSU-Next](https://github.com/rifsxd/KernelSU-Next) / [KernelSU](https://github.com/tiann/KernelSU) / 纯净无 Root 内核），生成即刷即用的自研 **Baka-Flash** 格式极速刷机包（原生 64 位 ARM64 Magiskboot v31.0，彻底淘汰 10 年前的 AnyKernel3 遗留架构）。
 
 无需在本地配置繁杂的 Linux 交叉编译环境，通过 Web 页面点击或定时每夜版（Nightly）即可一键构建。支持通过添加设备配置文件（`devices/*.env`）轻松适配手上不同的安卓设备。
 
@@ -22,6 +22,9 @@
   - **ZRAM & 压缩算法升级**：升级 **LZ4 v1.10.0 + ARM64v8 汇编加速解压**（`lz4armv8.S` + `LZ4_FAST_DEC_LOOP`）与 **64-bit LZO / LZO-RLE**，默认压缩器设为 **`lz4`**（`CONFIG_ZRAM_DEF_COMP_LZ4=y`）并开启闲置页回写（`CONFIG_ZRAM_WRITEBACK=y`）。
 - **存储与 I/O 加速**：反向移植高版本 **`blk-mq` & `mq-deadline`** 调度优化（同步请求预留 25% 标签、I/O 优先级、移除冗余关中断）及 **UFS 2.1 PM QoS** 优化（移除 10ms 拖尾延迟投票、仅对 UFS 中断所在 CPU 投票）。
   - 开启 **Kyber** 多队列自适应调度器（`CONFIG_MQ_IOSCHED_KYBER=y`），优化高吞吐低延迟场景。
+- **现代 Android 14/15/16 分区全面兼容**：原生开启 **EROFS（只读增强压缩文件系统）**（`CONFIG_EROFS_FS=y`、`CONFIG_EROFS_FS_XATTR=y`、`CONFIG_EROFS_FS_POSIX_ACL=y`、`CONFIG_EROFS_FS_SECURITY=y`、`CONFIG_EROFS_FS_ZIP=y`），完美适配 Axion OS 2.8 / LineageOS 22+ 的 EROFS 系统与厂商分区；
+- **设备树全版本覆盖（All-Board DTB）**：内核镜像整合小米 MIX 2S 全部 **14 款主板硬件版本**（`polaris-p0` ~ `polaris-p3`, `polaris-mp`, `v2`, `v2.1`），彻底杜绝 Bootloader 设备树不匹配或引脚配置缺失导致的循环重启；
+- **自研原生 64 位刷机引擎（Baka-Flash Engine）**：集成官方最新 **Magisk v31.0 ARM64 原生 `magiskboot`**，自动识别 A/B 分区节点，自动剔除旧 DTB 防止 Double-DTB 恶疾，1.5 秒安全完成刷入，零 32 位 BusyBox 依赖；
 - **Android 15/16 系统调用与安全补丁**：
   - 反向移植 Linux 5.6+ **`openat2(2)`**（syscall `437`）与 Linux 5.14+ **`cgroup.kill`** 原子进程组清理接口，适配 Android 15/16 `lmkd` / Bionic 与容器运行时；
   - 合入 **Linux Foundation CIP SLTS (`v4.19.325-cip116` .. `v4.19.325-cip136`)** 共 **3,982 个** 2025–2026 上游安全漏洞（CVE）与稳定性修复补丁，以及 Binder `kvcalloc` 防碎片化 OOM 修复。
@@ -41,10 +44,10 @@
 3. **手动触发构建**：
    点击右侧的 **`Run workflow`** 下拉按钮：
    - **Target Device Profile**：选择 `polaris`（或输入自定义机型配置）。
-   - **Publish Mode**：选择 `release`（正式发布）、`nightly`（滚动覆盖每夜版）或 `artifact_only`（仅留测试包）。
-   - **Superuser / Root Solution**：单选切换 `bakasu`（默认）、`ksu_next`、`ksu` 或 `none`。
-   - **Kernel Version Suffix**：个性化版本号后缀（留空自动使用 `-BakaSU-<device>`）。
+   - **Publish Mode**：选择 `release`（正式发布）、`nightly`（滚动覆盖每夜版）或 `artifact_only`（仅生成 GitHub Actions Artifacts 测试包，不发布 Release）。
+   - **Superuser / Root Solution**：单选切换 `bakasu`（默认）、`sukisu`、`ksu_next`、`ksu` 或 `none`。
    - **Enable Docker / LXC Container Kernel Configs**：按需勾选容器支持（默认 `false`）。
+   - **Include boot crash logger & diagnostic probe (enable_debug)**：按需勾选开机黑匣子崩溃探针（故障排查专用，默认 `false` 纯净版）。
    - 点击绿色的 **`Run workflow`** 开始编译。
 4. **下载产物**：
    - 编译完成后（约 8~15 分钟），进入本次构建详情页面。

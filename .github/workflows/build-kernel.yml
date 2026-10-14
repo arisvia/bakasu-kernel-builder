@@ -36,6 +36,11 @@ on:
         required: false
         type: boolean
         default: false
+      enable_debug:
+        description: 'Include boot crash logger & diagnostic probe in flashable zip'
+        required: false
+        type: boolean
+        default: false
       custom_repo:
         description: '[Custom] Kernel Git Repo URL (only if device=custom)'
         required: false
@@ -342,95 +347,148 @@ jobs:
           echo "[+] Final Ccache statistics:"
           ccache -s
 
-      - name: Package AnyKernel3 Zip
+      - name: Package Native Baka-Flash Zip
         run: |
-          git clone --depth=1 "${{ env.ANYKERNEL3_REPO }}" -b "${{ env.ANYKERNEL3_BRANCH }}" anykernel3
-          cd anykernel3
-          rm -rf .git .github .gitignore ramdisk patch modules
+          mkdir -p flasher/tools flasher/META-INF/com/google/android
+          cd flasher
 
-          if [ "${{ env.ARCH }}" = "arm64" ]; then
-            echo "[+] Injecting official 64-bit ARM64 tools for modern 64-bit recovery..."
-            curl -sSL "https://github.com/osm0sis/AnyKernel3/archive/refs/heads/arm64-tools.tar.gz" | tar -xz -C tools/ --strip-components=1
-            chmod +x tools/*
-            python3 - << 'PYEOF'
-            with open("META-INF/com/google/android/update-binary", "r") as f:
-                c = f.read()
-            s_old = c[c.find("setup_bb() {"):c.find("debugging() {")]
-            s_new = """setup_bb() {
-              local app bb;
-              mount -o remount,exec /tmp 2>/dev/null;
-              mount -o remount,exec /postinstall 2>/dev/null;
-              mount -o remount,exec $AKHOME 2>/dev/null;
-              setenforce 0 2>/dev/null;
-              bb=$AKHOME/tools/busybox;
-              chmod 755 $bb 2>/dev/null;
-              chmod 755 $AKHOME/tools/* 2>/dev/null;
-              mkdir -p $AKHOME/bin;
-              cp -f $bb $AKHOME/bin/busybox 2>/dev/null || ln -s $bb $AKHOME/bin/busybox 2>/dev/null;
-              chmod 755 $AKHOME/bin/busybox 2>/dev/null;
-              $bb --install -s $AKHOME/bin 2>/dev/null;
-              for app in ash sh awk sed grep cat cp mv rm mkdir chmod ls dd tar gzip cut tr head tail sleep date find; do
-                [ -e $AKHOME/bin/$app ] || ln -sf $bb $AKHOME/bin/$app 2>/dev/null || ln -sf /system/bin/$app $AKHOME/bin/$app 2>/dev/null || true;
-              done;
-              [ -e $AKHOME/bin/ash ] || ln -sf $bb $AKHOME/bin/ash 2>/dev/null || ln -sf /system/bin/sh $AKHOME/bin/ash 2>/dev/null || true;
-              [ -e $AKHOME/bin/sh ] || ln -sf $bb $AKHOME/bin/sh 2>/dev/null || ln -sf /system/bin/sh $AKHOME/bin/sh 2>/dev/null || true;
-              return 0;
-            }
-            """
-            c = c.replace(s_old, s_new)
-            call_old = "setup_bb;\nif [ $? != 0 -o -z \"$(ls bin)\" ]; then\n  abort \"Busybox setup failed. Aborting...\";\nfi;"
-            c = c.replace(call_old, "setup_bb;")
-            call_run_old = "ui_print \"Installing...\";\nash anykernel.sh;\nif [ $? != 0 ]; then\n  abort;\nfi;"
-            call_run_new = """ui_print "Installing...";\\n$AKHOME/tools/busybox ash anykernel.sh >/tmp/ak3.log 2>&1;\\nres=$?;\\ncat /tmp/ak3.log | while IFS=\\'\\' read -r line; do\\n  ui_print "$line";\\ndone;\\nif [ $res != 0 ]; then\\n  abort "Installation failed with exit code $res.";\\nfi;"""
-            c = c.replace(call_run_old, call_run_new)
-            with open("META-INF/com/google/android/update-binary", "w") as f:
-                f.write(c)
-            PYEOF
+          echo "[+] Staging modern Magisk v31.0 ARM64 magiskboot from repository..."
+          if [ -f "$GITHUB_WORKSPACE/installer/tools/magiskboot" ]; then
+            cp -f "$GITHUB_WORKSPACE/installer/tools/magiskboot" tools/magiskboot
+          else
+            curl -sSL "https://github.com/osm0sis/AnyKernel3/archive/refs/heads/arm64-tools.tar.gz" | tar -xz -C tools/ --strip-components=1 tools/magiskboot || true
+          fi
+          chmod 755 tools/magiskboot
+
+          echo "[+] Copying kernel image..."
+          cp "${{ env.KERNEL_OUTPUT_BIN }}" ./kernel-new
+
+          echo "[+] Generating native 64-bit installer update-binary (Debug Probe: ${{ env.ENABLE_DEBUG }})..."
+          cat > META-INF/com/google/android/update-binary << 'EOF'
+          #!/system/bin/sh
+          # Native Baka-Flash Engine for Android (64-bit ARM64, Zero-Bloat)
+          OUTFD=$2
+          ZIPFILE="$3"
+
+          ui_print() {
+            until [ -z "$1" ]; do
+              echo "ui_print $1" >> /proc/self/fd/$OUTFD
+              echo "ui_print" >> /proc/self/fd/$OUTFD
+              shift
+            done
+          }
+
+          abort() {
+            ui_print "[-] ERROR: $1"
+            exit 1
+          }
+
+          ui_print "==========================================="
+          ui_print "  ${{ env.SU_LABEL }} Kernel Flasher for ${{ env.DEVICE_MODEL }}"
+          ui_print "  Linux 4.19.325 | 64-bit ARM64 Native"
+          ui_print "==========================================="
+
+          setenforce 0 2>/dev/null
+          mount -o remount,rw / 2>/dev/null
+          mount -o remount,rw /tmp 2>/dev/null
+          mount -o remount,exec /tmp 2>/dev/null
+
+          WORKDIR="/tmp/kernel_flasher"
+          rm -rf "$WORKDIR" 2>/dev/null
+          mkdir -p "$WORKDIR"
+          cd "$WORKDIR" || abort "Failed to create working directory in /tmp."
+
+          # =========================================================
+          # Diagnostic Probe (Conditionally injected when enable_debug=true)
+          # =========================================================
+          PROBE_ENABLED="${{ env.ENABLE_DEBUG }}"
+          if [ "$PROBE_ENABLED" = "true" ]; then
+            ui_print "[*] [DEBUG MODE] Probing for previous boot crash logs..."
+            mount -t pstore pstore /sys/fs/pstore 2>/dev/null
+            mkdir -p /cache 2>/dev/null
+            for cb in /dev/block/by-name/cache /dev/block/bootdevice/by-name/cache /dev/block/platform/soc/*/by-name/cache; do
+              if [ -e "$cb" ]; then
+                mount -t ext4 "$cb" /cache 2>/dev/null
+                break
+              fi
+            done
+            mkdir -p /cache/debug_logs 2>/dev/null
+            chmod 777 /cache/debug_logs 2>/dev/null
+            OUT="/cache/debug_logs/bootlog.txt"
+            rm -f "$OUT" 2>/dev/null
+            if [ -d /sys/fs/pstore ]; then
+              for f in /sys/fs/pstore/*; do
+                if [ -f "$f" ]; then
+                  echo "=== PSTORE: $(basename $f) ===" >> "$OUT"
+                  cat "$f" >> "$OUT" 2>&1
+                fi
+              done
+            fi
+            if [ -f /proc/last_kmsg ]; then
+              echo "=== PROC LAST_KMSG ===" >> "$OUT"
+              cat /proc/last_kmsg >> "$OUT" 2>&1
+            fi
+            if [ -s "$OUT" ]; then
+              SZ=$(ls -l "$OUT" 2>/dev/null | awk '{print $5}')
+              ui_print "[!] FOUND CRASH LOG: /cache/debug_logs/bootlog.txt ($SZ bytes)"
+            fi
           fi
 
-          echo "[+] Copying kernel image to AnyKernel3..."
-          cp "${{ env.KERNEL_OUTPUT_BIN }}" ./
+          ui_print "[*] Extracting flasher tools and kernel..."
+          unzip -o "$ZIPFILE" "tools/magiskboot" "kernel-new" -d "$WORKDIR" >/dev/null 2>&1
+          if [ ! -f "$WORKDIR/tools/magiskboot" ]; then
+            unzip -o "$ZIPFILE" -d "$WORKDIR" >/dev/null 2>&1
+          fi
+          chmod 755 "$WORKDIR/tools/magiskboot" 2>/dev/null
+          [ -x "$WORKDIR/tools/magiskboot" ] || abort "Native magiskboot binary is missing or not executable."
 
-          cat > anykernel.sh <<EOF
-          set -x;
-          ### AnyKernel3 Ramdisk Mod Script
-          ## osm0sis @ xda-developers
+          ui_print "[*] Locating boot partition..."
+          SLOT=$(getprop ro.boot.slot_suffix 2>/dev/null)
+          [ -z "$SLOT" ] && SLOT=$(grep -oE 'androidboot.slot_suffix=_[ab]' /proc/cmdline 2>/dev/null | cut -d= -f2)
 
-          ### AnyKernel setup
-          # global properties
-          properties() { '
-          kernel.string=${{ env.SU_LABEL }} Kernel for ${{ env.DEVICE_MODEL }} (${{ env.FINAL_LOCALVERSION }})
-          do.devicecheck=0
-          do.modules=0
-          do.systemless=1
-          do.cleanup=1
-          do.cleanuponabort=0
-          device.name1=${{ env.DEVICE_NAME }}
-          device.name2=
-          device.name3=
-          device.name4=
-          device.name5=
-          supported.versions=
-          supported.patchlevels=
-          supported.vendorpatchlevels=
-          '; } # end properties
+          BOOT_DEV=""
+          for b in "/dev/block/bootdevice/by-name/boot$SLOT" "/dev/block/by-name/boot$SLOT" "/dev/block/platform/soc/*/by-name/boot$SLOT" "/dev/block/bootdevice/by-name/boot" "/dev/block/by-name/boot"; do
+            if [ -b "$b" ]; then
+              BOOT_DEV="$b"
+              break
+            fi
+          done
 
-          ### AnyKernel install
-          # boot shell variables
-          BLOCK=boot;
-          IS_SLOT_DEVICE=0;
-          RAMDISK_COMPRESSION=auto;
-          PATCH_VBMETA_FLAG=auto;
+          [ -n "$BOOT_DEV" ] || abort "Unable to locate boot partition on device."
+          ui_print "[+] Boot target: $BOOT_DEV"
 
-          # import functions/variables and setup patching - see for reference (DO NOT REMOVE)
-          . tools/ak3-core.sh;
+          ui_print "[*] Dumping current boot image..."
+          dd if="$BOOT_DEV" of=stock_boot.img bs=4096 2>/dev/null || abort "Failed to dump boot partition."
 
-          # boot install (kernel-only split/flash without touching ramdisk)
-          split_boot;
-          flash_boot;
-          ## end boot install
+          ui_print "[*] Unpacking boot image..."
+          "$WORKDIR/tools/magiskboot" unpack -h stock_boot.img >unpack.log 2>&1
+          [ $? -eq 0 ] || abort "magiskboot unpack failed. Log: $(cat unpack.log)"
+
+          ui_print "[*] Replacing kernel and stripping obsolete DTB blobs..."
+          rm -f kernel_dtb dtb extra recovery_dtbo 2>/dev/null
+          cp -f "$WORKDIR/kernel-new" ./kernel || abort "Failed to stage new kernel image."
+
+          ui_print "[*] Repacking boot image..."
+          "$WORKDIR/tools/magiskboot" repack stock_boot.img new_boot.img >repack.log 2>&1
+          [ $? -eq 0 ] || abort "magiskboot repack failed. Log: $(cat repack.log)"
+          [ -f new_boot.img ] || abort "Repacked boot image not found."
+
+          ui_print "[*] Flashing new boot image to $BOOT_DEV..."
+          dd if=new_boot.img of="$BOOT_DEV" bs=4096 2>/dev/null || abort "Failed to flash new boot image."
+          sync
+
+          ui_print "[+] Kernel flashed successfully!"
+          ui_print "[+] Reboot your device to enjoy ${{ env.SU_LABEL }}!"
+          ui_print "==========================================="
+
+          cd /
+          rm -rf "$WORKDIR" 2>/dev/null
+          exit 0
           EOF
-          sed -i 's/^          //' anykernel.sh
+          sed -i 's/^          //' META-INF/com/google/android/update-binary
+          chmod 755 META-INF/com/google/android/update-binary
+
+          echo "# dummy" > META-INF/com/google/android/updater-script
 
           DATE_TAG=$(date +%Y%m%d_%H%M%S)
           if [ "${{ env.RELEASE_MODE }}" = "nightly" ]; then
