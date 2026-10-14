@@ -366,14 +366,14 @@ jobs:
               chmod 755 $bb 2>/dev/null;
               chmod 755 $AKHOME/tools/* 2>/dev/null;
               mkdir -p $AKHOME/bin;
+              cp -f $bb $AKHOME/bin/busybox 2>/dev/null || ln -s $bb $AKHOME/bin/busybox 2>/dev/null;
+              chmod 755 $AKHOME/bin/busybox 2>/dev/null;
               $bb --install -s $AKHOME/bin 2>/dev/null;
               for app in ash sh awk sed grep cat cp mv rm mkdir chmod ls dd tar gzip cut tr head tail sleep date find; do
-                if [ ! -e $AKHOME/bin/$app ]; then
-                  ln -s $bb $AKHOME/bin/$app 2>/dev/null || ln -s /system/bin/$app $AKHOME/bin/$app 2>/dev/null || true;
-                fi;
+                [ -e $AKHOME/bin/$app ] || ln -sf $bb $AKHOME/bin/$app 2>/dev/null || ln -sf /system/bin/$app $AKHOME/bin/$app 2>/dev/null || true;
               done;
-              [ -e $AKHOME/bin/ash ] || ln -s $bb $AKHOME/bin/ash 2>/dev/null || ln -s /system/bin/sh $AKHOME/bin/ash 2>/dev/null || true;
-              [ -e $AKHOME/bin/sh ] || ln -s $bb $AKHOME/bin/sh 2>/dev/null || ln -s /system/bin/sh $AKHOME/bin/sh 2>/dev/null || true;
+              [ -e $AKHOME/bin/ash ] || ln -sf $bb $AKHOME/bin/ash 2>/dev/null || ln -sf /system/bin/sh $AKHOME/bin/ash 2>/dev/null || true;
+              [ -e $AKHOME/bin/sh ] || ln -sf $bb $AKHOME/bin/sh 2>/dev/null || ln -sf /system/bin/sh $AKHOME/bin/sh 2>/dev/null || true;
               return 0;
             }
             """
@@ -381,7 +381,7 @@ jobs:
             call_old = "setup_bb;\nif [ $? != 0 -o -z \"$(ls bin)\" ]; then\n  abort \"Busybox setup failed. Aborting...\";\nfi;"
             c = c.replace(call_old, "setup_bb;")
             call_run_old = "ui_print \"Installing...\";\nash anykernel.sh;\nif [ $? != 0 ]; then\n  abort;\nfi;"
-            call_run_new = """ui_print "Installing...";\\nash anykernel.sh >/tmp/ak3.log 2>&1;\\nres=$?;\\ncat /tmp/ak3.log | while IFS=\\'\\' read -r line; do\\n  ui_print "$line";\\ndone;\\nif [ $res != 0 ]; then\\n  abort "Installation failed with exit code $res.";\\nfi;"""
+            call_run_new = """ui_print "Installing...";\\n$AKHOME/tools/busybox ash anykernel.sh >/tmp/ak3.log 2>&1;\\nres=$?;\\ncat /tmp/ak3.log | while IFS=\\'\\' read -r line; do\\n  ui_print "$line";\\ndone;\\nif [ $res != 0 ]; then\\n  abort "Installation failed with exit code $res.";\\nfi;"""
             c = c.replace(call_run_old, call_run_new)
             with open("META-INF/com/google/android/update-binary", "w") as f:
                 f.write(c)
@@ -392,6 +392,7 @@ jobs:
           cp "${{ env.KERNEL_OUTPUT_BIN }}" ./
 
           cat > anykernel.sh <<EOF
+          set -x;
           ### AnyKernel3 Ramdisk Mod Script
           ## osm0sis @ xda-developers
 
