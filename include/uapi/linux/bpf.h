@@ -1,7 +1,3 @@
-struct bpf_spin_lock {
-	__u32 val;
-};
-
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /* Copyright (c) 2011-2014 PLUMgrid, http://plumgrid.com
  *
@@ -14,6 +10,10 @@ struct bpf_spin_lock {
 
 #include <linux/types.h>
 #include <linux/bpf_common.h>
+
+struct bpf_spin_lock {
+	__u32 val;
+};
 
 /* Extended instruction set based on top of classic BPF */
 
