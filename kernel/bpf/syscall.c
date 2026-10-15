@@ -78,9 +78,6 @@ int bpf_check_uarg_tail_zero(void __user *uaddr,
 	unsigned char val;
 	int err;
 
-	pr_err("BakaSU-DBG tail_zero: expected=%zu actual=%zu sizeof_attr=%zu\n",
-	       expected_size, actual_size, sizeof(union bpf_attr));
-
 	if (unlikely(actual_size > PAGE_SIZE)) {	/* silly large */
 		pr_err("BakaSU-DBG tail_zero: E2BIG silly large actual=%zu\n", actual_size);
 		return -E2BIG;
