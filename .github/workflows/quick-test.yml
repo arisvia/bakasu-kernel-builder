@@ -120,8 +120,7 @@ jobs:
           cd repack
           ../tools/magiskboot-x86_64 unpack -h ../boot.img
           
-          # Replace kernel with our compiled Image.gz-dtb and remove obsolete kernel_dtb
-          rm -f kernel_dtb dtb
+          # Replace kernel with our compiled Image.gz-dtb
           cp ../kernel-source/out/arch/arm64/boot/Image.gz-dtb kernel
           
           # Repack
@@ -129,6 +128,18 @@ jobs:
           cd ..
           
           ls -lh new_boot.img
+
+      - name: Verify Kernel Identity
+        run: |
+          echo "### Kernel Identity & Checksum" >> $GITHUB_STEP_SUMMARY
+          echo "- **vmlinux release string**:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          strings kernel-source/out/vmlinux | grep -m1 "Linux version" >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "- **new_boot.img SHA256**:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          sha256sum new_boot.img >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
