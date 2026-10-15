@@ -78,13 +78,8 @@ int bpf_check_uarg_tail_zero(void __user *uaddr,
 	unsigned char val;
 	int err;
 
-	pr_err("BakaSU-DBG tail_zero: expected=%zu actual=%zu sizeof_attr=%zu\n",
-	       expected_size, actual_size, sizeof(union bpf_attr));
-
-	if (unlikely(actual_size > PAGE_SIZE)) {	/* silly large */
-		pr_err("BakaSU-DBG tail_zero: E2BIG silly large actual=%zu\n", actual_size);
+	if (unlikely(actual_size > PAGE_SIZE))	/* silly large */
 		return -E2BIG;
-	}
 
 	if (unlikely(!access_ok(VERIFY_READ, uaddr, actual_size)))
 		return -EFAULT;
@@ -99,11 +94,8 @@ int bpf_check_uarg_tail_zero(void __user *uaddr,
 		err = get_user(val, addr);
 		if (err)
 			return err;
-		if (val) {
-			pr_err("BakaSU-DBG tail_zero: E2BIG nonzero val=%#x at offset=%zu\n",
-			       val, (size_t)(addr - (unsigned char __user *)uaddr));
+		if (val)
 			return -E2BIG;
-		}
 	}
 
 	return 0;
