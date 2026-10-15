@@ -2546,8 +2546,16 @@ static s32 btf_func_check_meta(struct btf_verifier_env *env,
 		return -EINVAL;
 	}
 
-	if (btf_type_vlen(t)) {
-		btf_verifier_log_type(env, t, "vlen != 0");
+	/*
+	 * Linux 5.4 required vlen == 0 here, but modern Clang emits
+	 * vlen == 1 for BTF_KIND_FUNC (it doubles as the linkage
+	 * field: 0 = global, 1 = static).  Linux 5.10 commit
+	 * 4c9fd6b7f468 relaxed this to accept vlen <= 1, which
+	 * Android's bpfloader relies on.  Reject anything above
+	 * BTF_FUNC_GLOBAL.
+	 */
+	if (btf_type_vlen(t) > BTF_FUNC_GLOBAL) {
+		btf_verifier_log_type(env, t, "Invalid func linkage");
 		return -EINVAL;
 	}
 

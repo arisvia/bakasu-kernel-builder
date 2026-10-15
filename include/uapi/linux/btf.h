@@ -75,6 +75,12 @@ struct btf_type {
 #define BTF_KIND_MAX		BTF_KIND_DATASEC
 #define NR_BTF_KINDS		(BTF_KIND_MAX + 1)
 
+/* BTF_KIND_FUNC linkage is encoded in btf_type.vlen */
+#define BTF_FUNC_GLOBAL	0
+#define BTF_FUNC_STATIC	1
+#define BTF_FUNC_EXTERN	2
+#define BTF_FUNC_MAX	BTF_FUNC_EXTERN
+
 /* For some specific BTF_KIND, "struct btf_type" is immediately
  * followed by extra data.
  */
