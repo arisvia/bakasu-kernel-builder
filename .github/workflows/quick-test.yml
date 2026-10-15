@@ -100,6 +100,14 @@ jobs:
           )
 
           make -j$(nproc) "${MAKE_ARGS[@]}" vendor/xiaomi/polaris_defconfig
+          scripts/config --file out/.config \
+            -e KSU \
+            -e KSU_MANUAL_HOOK \
+            -e KSU_MANUAL_HOOK_AUTO_SETUID_HOOK \
+            -e KSU_MANUAL_HOOK_AUTO_INITRC_HOOK \
+            -e KSU_MANUAL_HOOK_AUTO_INPUT_HOOK \
+            -d KSU_TRACEPOINT_HOOK
+          make -j$(nproc) "${MAKE_ARGS[@]}" olddefconfig
           make -j$(nproc) "${MAKE_ARGS[@]}" Image.gz-dtb
 
           ls -lh out/arch/arm64/boot/Image.gz-dtb
