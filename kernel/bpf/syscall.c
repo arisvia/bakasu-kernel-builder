@@ -472,18 +472,12 @@ static int map_check_btf(const struct bpf_map *map, const struct btf *btf,
 	int ret = 0;
 
 	key_type = btf_type_id_size(btf, &btf_key_id, &key_size);
-	if (!key_type || key_size != map->key_size) {
-		pr_err("BakaSU-DBG map_check_btf: KEY mismatch key_type=%p key_size=%u map->key_size=%u\n",
-		       key_type, key_size, map->key_size);
+	if (!key_type || key_size != map->key_size)
 		return -EINVAL;
-	}
 
 	value_type = btf_type_id_size(btf, &btf_value_id, &value_size);
-	if (!value_type || value_size != map->value_size) {
-		pr_err("BakaSU-DBG map_check_btf: VALUE mismatch value_type=%p value_size=%u map->value_size=%u\n",
-		       value_type, value_size, map->value_size);
+	if (!value_type || value_size != map->value_size)
 		return -EINVAL;
-	}
 
 	if (map->ops->map_check_btf)
 		ret = map->ops->map_check_btf(map, key_type, value_type);
@@ -500,16 +494,9 @@ static int map_create(union bpf_attr *attr)
 	int f_flags;
 	int err;
 
-	pr_err("BakaSU-DBG map_create: type=%u key=%u val=%u max=%u flags=%#x name='%s' btf_fd=%d key_id=%u val_id=%u\n",
-	       attr->map_type, attr->key_size, attr->value_size, attr->max_entries,
-	       attr->map_flags, attr->map_name, attr->btf_fd,
-	       attr->btf_key_type_id, attr->btf_value_type_id);
-
 	err = CHECK_ATTR(BPF_MAP_CREATE);
-	if (err) {
-		pr_err("BakaSU-DBG map_create: CHECK_ATTR failed name='%s'\n", attr->map_name);
+	if (err)
 		return -EINVAL;
-	}
 
 	f_flags = bpf_get_file_flag(attr->map_flags);
 	if (f_flags < 0)
@@ -591,7 +578,6 @@ free_map_sec:
 free_map_nouncharge:
 	btf_put(map->btf);
 	map->ops->map_free(map);
-	pr_err("BakaSU-DBG map_create: FAILED name='%s' err=%d\n", attr->map_name, err);
 	return err;
 }
 
@@ -1379,14 +1365,8 @@ static int bpf_prog_load(union bpf_attr *attr)
 	char license[128];
 	bool is_gpl;
 
-	pr_err("BakaSU-DBG bpf_prog_load: type=%u insn_cnt=%u name='%s' expected_attach=%u\n",
-	       attr->prog_type, attr->insn_cnt, attr->prog_name,
-	       attr->expected_attach_type);
-
-	if (CHECK_ATTR(BPF_PROG_LOAD)) {
-		pr_err("BakaSU-DBG bpf_prog_load: CHECK_ATTR FAILED name='%s'\n", attr->prog_name);
+	if (CHECK_ATTR(BPF_PROG_LOAD))
 		return -EINVAL;
-	}
 
 	if (attr->prog_flags & ~(BPF_F_STRICT_ALIGNMENT | BPF_F_ANY_ALIGNMENT))
 		return -EINVAL;
@@ -1469,11 +1449,8 @@ static int bpf_prog_load(union bpf_attr *attr)
 
 	/* run eBPF verifier */
 	err = bpf_check(&prog, attr);
-	if (err < 0) {
-		pr_err("BakaSU-DBG bpf_prog_load: verifier REJECTED name='%s' err=%d\n",
-		       attr->prog_name, err);
+	if (err < 0)
 		goto free_used_maps;
-	}
 
 	prog = bpf_prog_select_runtime(prog, &err);
 	if (err < 0)
@@ -1513,7 +1490,6 @@ free_prog_sec:
 	security_bpf_prog_free(prog->aux);
 free_prog_nouncharge:
 	bpf_prog_free(prog);
-	pr_err("BakaSU-DBG bpf_prog_load: FAILED name='%s' err=%d\n", attr->prog_name, err);
 	return err;
 }
 
