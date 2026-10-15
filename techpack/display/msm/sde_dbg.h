@@ -446,7 +446,7 @@ void sde_evtlog_set_filter(struct sde_dbg_evtlog *evtlog, char *filter);
 int sde_evtlog_get_filter(struct sde_dbg_evtlog *evtlog, int index,
 		char *buf, size_t bufsz);
 
-#if !defined(CONFIG_DRM_SDE_RSC) || !defined(CONFIG_DEBUG_FS)
+#ifndef CONFIG_DRM_SDE_RSC
 static inline void sde_rsc_debug_dump(u32 mux_sel)
 {
 }
