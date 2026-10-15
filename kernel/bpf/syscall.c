@@ -1480,6 +1480,23 @@ static int bpf_prog_load(union bpf_attr *attr)
 	if (err < 0) {
 		pr_err("BakaSU-DBG bpf_prog_load: verifier REJECTED name='%s' err=%d\n",
 		       attr->prog_name, err);
+		if (attr->log_level && attr->log_buf && attr->log_size) {
+			char *lb = kmalloc(attr->log_size + 1, GFP_KERNEL);
+
+			if (lb) {
+				if (!copy_from_user(lb, u64_to_user_ptr(attr->log_buf),
+						    attr->log_size)) {
+					lb[attr->log_size] = 0;
+					pr_err("BakaSU-DBG vlog BEGIN>>>%s<<<END\n", lb);
+				} else {
+					pr_err("BakaSU-DBG vlog: copy_from_user failed\n");
+				}
+				kfree(lb);
+			}
+		} else {
+			pr_err("BakaSU-DBG vlog: no log buffer (level=%u size=%u)\n",
+			       attr->log_level, attr->log_size);
+		}
 		goto free_used_maps;
 	}
 
