@@ -31,18 +31,30 @@ jobs:
         id: cache-clang
         uses: actions/cache@v4
         with:
-          path: toolchain/clang-r547379
-          key: clang-r547379-main-v2
+          path: toolchain/clang-repo/clang-r547379
+          key: clang-main-clang-r547379
 
       - name: Setup Toolchain (AOSP Clang / LLVM)
         run: |
           mkdir -p toolchain
-          if [ ! -d "toolchain/clang-r547379" ]; then
-            git clone --depth=1 --single-branch -b main https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 toolchain/android-clang
-            mv toolchain/android-clang/clang-r547379 toolchain/clang-r547379
-            rm -rf toolchain/android-clang
+          if [ "${{ steps.cache-clang.outputs.cache-hit }}" = "true" ]; then
+            echo "[+] Clang toolchain restored from cache."
+          else
+            echo "[+] Cache miss. Fetching AOSP Clang (main / clang-r547379)..."
+            if git clone -q --depth=1 --filter=blob:none --sparse --single-branch \
+              https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 \
+              -b "main" toolchain/clang-repo 2>/dev/null; then
+              git -C toolchain/clang-repo sparse-checkout set "clang-r547379"
+            else
+              rm -rf toolchain/clang-repo
+              git clone -q --depth=1 --single-branch \
+                https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 \
+                -b "main" toolchain/clang-repo
+            fi
           fi
-          echo "$GITHUB_WORKSPACE/toolchain/clang-r547379/bin" >> $GITHUB_PATH
+          CLANG_DIR="$(pwd)/toolchain/clang-repo/clang-r547379"
+          "$CLANG_DIR/bin/clang" --version
+          echo "$CLANG_DIR/bin" >> $GITHUB_PATH
 
       - name: Setup Ccache Build Cache
         uses: actions/cache@v4
