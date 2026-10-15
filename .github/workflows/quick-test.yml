@@ -1,0 +1,112 @@
+name: Fast Boot Test
+
+on:
+  push:
+    branches:
+      - sdm845
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-pack:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Builder Repo
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Cache AOSP Clang Toolchain
+        id: cache-clang
+        uses: actions/cache@v4
+        with:
+          path: toolchain/clang-r547379
+          key: clang-r547379-main-v2
+
+      - name: Setup Toolchain (AOSP Clang / LLVM)
+        run: |
+          mkdir -p toolchain
+          if [ ! -d "toolchain/clang-r547379" ]; then
+            git clone --depth=1 --single-branch -b main https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 toolchain/android-clang
+            mv toolchain/android-clang/clang-r547379 toolchain/clang-r547379
+            rm -rf toolchain/android-clang
+          fi
+          echo "$GITHUB_WORKSPACE/toolchain/clang-r547379/bin" >> $GITHUB_PATH
+
+      - name: Install System Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential bc bison flex libssl-dev libelf-dev libncurses-dev \
+            git ccache zip unzip curl xz-utils python3 python3-pip
+
+      - name: Setup Ccache Build Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-sdm845-quicktest-${{ github.sha }}
+          restore-keys: |
+            ccache-sdm845-quicktest-
+            ccache-sdm845-polaris-
+
+      - name: Clone Kernel Source
+        run: |
+          ccache -M 5G
+          ccache -s
+          git clone --depth=1 -b sdm845 https://github.com/arisvia/kernel-builder kernel-source
+
+      - name: Integrate Superuser Driver
+        run: |
+          cd kernel-source
+          curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash -
+          echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/xiaomi/polaris_defconfig
+
+      - name: Build Kernel
+        run: |
+          cd kernel-source
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
+
+          MAKE_ARGS="ARCH=arm64 CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_COMPAT=arm-linux-gnueabi- LLVM=1"
+
+          make -j$(nproc) O=out $MAKE_ARGS vendor/xiaomi/polaris_defconfig
+          make -j$(nproc) O=out $MAKE_ARGS Image.gz-dtb
+
+          ls -lh out/arch/arm64/boot/Image.gz-dtb
+
+      - name: Repack new_boot.img with magiskboot
+        run: |
+          chmod +x tools/magiskboot-x86_64
+          curl -sL "https://github.com/arisvia/kernel-builder/releases/download/base-assets/boot.img" -o boot.img
+          
+          mkdir -p repack
+          cd repack
+          ../tools/magiskboot-x86_64 unpack -h ../boot.img
+          
+          # Replace kernel with our compiled Image.gz-dtb and remove obsolete kernel_dtb
+          rm -f kernel_dtb dtb
+          cp ../kernel-source/out/arch/arm64/boot/Image.gz-dtb kernel
+          
+          # Repack
+          ../tools/magiskboot-x86_64 repack ../boot.img ../new_boot.img
+          cd ..
+          
+          ls -lh new_boot.img
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: new_boot.img
+          path: new_boot.img
+          if-no-files-found: error
+
+      - name: Publish to Fast Boot Test Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload fast-boot-test new_boot.img --clobber
