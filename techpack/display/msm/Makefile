@@ -1,3 +1,6 @@
+ifeq ($(CONFIG_ARCH_SDM845), y)
+include $(srctree)/techpack/display/config/konadisp.conf
+endif
 # SPDX-License-Identifier: GPL-2.0
 ccflags-y := -I$(srctree)/include/drm -I$(srctree)/techpack/display/msm -I$(srctree)/techpack/display/msm/dsi -I$(srctree)/techpack/display/msm/dp
 ccflags-y += -I$(srctree)/techpack/display/msm/sde
@@ -75,7 +78,7 @@ msm_drm-$(CONFIG_DRM_MSM_SDE) += sde/sde_crtc.o \
 msm_drm-$(CONFIG_DRM_SDE_WB) += sde/sde_wb.o \
 	sde/sde_encoder_phys_wb.o \
 
-msm_drm-$(CONFIG_DRM_SDE_RSC) += sde_rsc.o \
+msm_drm-y += sde_rsc.o \
 	sde_rsc_hw.o \
 	sde_rsc_hw_v3.o \
 
