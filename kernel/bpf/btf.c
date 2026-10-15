@@ -2655,10 +2655,15 @@ static s32 btf_datasec_check_meta(struct btf_verifier_env *env,
 		return -EINVAL;
 	}
 
-	if (!t->size) {
-		btf_verifier_log_type(env, t, "size == 0");
-		return -EINVAL;
-	}
+	/*
+	 * NOTE: Linux 5.10+ added an "if (!t->size)" rejection here, but
+	 * Clang emits DATASEC size == 0 and relies on libbpf's
+	 * btf_fixup_datasec() to fill it in from the ELF section.
+	 * Android's bpfloader (netbpfload) is linked against libbpf 1.x,
+	 * which still performs that fixup, so rejecting size == 0 here
+	 * breaks BPF loading with "BTF loading error: -22".
+	 * Keep the Linux 5.4 (and Android 4.19 upstream) behaviour.
+	 */
 
 	if (btf_type_kflag(t)) {
 		btf_verifier_log_type(env, t, "Invalid btf_info kind_flag");
@@ -2673,6 +2678,15 @@ static s32 btf_datasec_check_meta(struct btf_verifier_env *env,
 
 	btf_verifier_log_type(env, t, NULL);
 
+	/*
+	 * Clang emits DATASEC size == 0 and VAR offsets == 0, relying on
+	 * libbpf's btf_fixup_datasec() to fill them in from the ELF
+	 * section.  Android's netbpfload uses libbpf 1.x which still
+	 * performs that fixup, so the offset/size range checks must be
+	 * skipped entirely when t->size == 0, otherwise they trivially
+	 * fail (0 >= 0, 0 > 0, 0 < sum) and BTF load returns -EINVAL,
+	 * which makes init reboot with 'reboot,bpfloader-failed'.
+	 */
 	for_each_vsi(i, t, vsi) {
 		/* A var cannot be in type void */
 		if (!vsi->type || !BTF_TYPE_ID_VALID(vsi->type)) {
@@ -2680,6 +2694,9 @@ static s32 btf_datasec_check_meta(struct btf_verifier_env *env,
 					     "Invalid type_id");
 			return -EINVAL;
 		}
+
+		if (!t->size)
+			continue;
 
 		if (vsi->offset < last_vsi_end_off || vsi->offset >= t->size) {
 			btf_verifier_log_vsi(env, t, vsi,
@@ -2704,7 +2721,7 @@ static s32 btf_datasec_check_meta(struct btf_verifier_env *env,
 		sum += vsi->size;
 	}
 
-	if (t->size < sum) {
+	if (t->size && t->size < sum) {
 		btf_verifier_log_type(env, t, "Invalid btf_info size");
 		return -EINVAL;
 	}
