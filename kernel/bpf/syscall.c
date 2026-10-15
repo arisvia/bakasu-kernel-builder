@@ -1481,25 +1481,13 @@ static int bpf_prog_load(union bpf_attr *attr)
 		pr_err("BakaSU-DBG bpf_prog_load: verifier REJECTED name='%s' err=%d\n",
 		       attr->prog_name, err);
 		if (attr->log_level && attr->log_buf && attr->log_size) {
-			u32 want = attr->log_size;
-			char *lb;
+			char *lb = kmalloc(attr->log_size + 1, GFP_KERNEL);
 
-			if (want > 65536)
-				want = 65536;
-			lb = kmalloc(want + 1, GFP_KERNEL);
 			if (lb) {
 				if (!copy_from_user(lb, u64_to_user_ptr(attr->log_buf),
-						    want)) {
-					u32 len, off;
-
-					lb[want] = 0;
-					len = strlen(lb);
-					/* printk truncates near 1KB; the reason
-					 * sits at the END of the verifier log.
-					 */
-					off = len > 900 ? len - 900 : 0;
-					pr_err("BakaSU-DBG vlog len=%u tail>>>%s<<<END\n",
-					       len, lb + off);
+						    attr->log_size)) {
+					lb[attr->log_size] = 0;
+					pr_err("BakaSU-DBG vlog BEGIN>>>%s<<<END\n", lb);
 				} else {
 					pr_err("BakaSU-DBG vlog: copy_from_user failed\n");
 				}
