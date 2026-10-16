@@ -264,6 +264,10 @@ static const char * const reg_type_str[] = {
 	[PTR_TO_PACKET_END]	= "pkt_end",
 	[PTR_TO_SOCKET_OR_NULL]	= "sock_or_null",
 	[PTR_TO_SOCKET]		= "sock",
+	[PTR_TO_SOCK_COMMON_OR_NULL]	= "sock_common_or_null",
+	[PTR_TO_SOCK_COMMON]	= "sock_common",
+	[PTR_TO_TCP_SOCK_OR_NULL]	= "tcp_sock_or_null",
+	[PTR_TO_TCP_SOCK]	= "tcp_sock",
 	[PTR_TO_MEM_OR_NULL]	= "mem_or_null",
 	[PTR_TO_MEM]		= "mem",
 };
@@ -989,6 +993,10 @@ static bool is_spillable_regtype(enum bpf_reg_type type)
 	case CONST_PTR_TO_MAP:
 	case PTR_TO_SOCKET:
 	case PTR_TO_SOCKET_OR_NULL:
+	case PTR_TO_SOCK_COMMON:
+	case PTR_TO_SOCK_COMMON_OR_NULL:
+	case PTR_TO_TCP_SOCK:
+	case PTR_TO_TCP_SOCK_OR_NULL:
 	case PTR_TO_MEM:
 	case PTR_TO_MEM_OR_NULL:
 		return true;
@@ -2095,6 +2103,20 @@ static int check_func_arg(struct bpf_verifier_env *env, u32 regno,
 		expected_type = SCALAR_VALUE;
 		if (type != expected_type)
 			goto err_type;
+	} else if (arg_type == ARG_PTR_TO_SOCK_COMMON) {
+		expected_type = PTR_TO_SOCK_COMMON;
+		/* Any of PTR_TO_SOCKET, PTR_TO_SOCKET_OR_NULL, and
+		 * PTR_TO_SOCK_COMMON is compatible with ARG_PTR_TO_SOCK_COMMON.
+		 * The former two are a subset of sock_common.
+		 */
+		if (type != expected_type &&
+		    type != PTR_TO_SOCKET &&
+		    type != PTR_TO_SOCKET_OR_NULL)
+			goto err_type;
+	} else if (arg_type == ARG_PTR_TO_SOCKET) {
+		expected_type = PTR_TO_SOCKET;
+		if (type != expected_type)
+			goto err_type;
 	} else {
 		verbose(env, "unsupported arg_type %d\n", arg_type);
 		return -EFAULT;
@@ -2734,6 +2756,17 @@ static int check_helper_call(struct bpf_verifier_env *env, int func_id, int insn
 		mark_reg_known_zero(env, regs, BPF_REG_0);
 		regs[BPF_REG_0].type = PTR_TO_MEM_OR_NULL;
 		regs[BPF_REG_0].mem_size = meta.mem_size;
+		regs[BPF_REG_0].id = ++env->id_gen;
+	} else if (fn->ret_type == RET_PTR_TO_SOCKET_OR_NULL ||
+		   fn->ret_type == RET_PTR_TO_TCP_SOCK_OR_NULL ||
+		   fn->ret_type == RET_PTR_TO_SOCK_COMMON_OR_NULL) {
+		mark_reg_known_zero(env, regs, BPF_REG_0);
+		if (fn->ret_type == RET_PTR_TO_SOCKET_OR_NULL)
+			regs[BPF_REG_0].type = PTR_TO_SOCKET_OR_NULL;
+		else if (fn->ret_type == RET_PTR_TO_TCP_SOCK_OR_NULL)
+			regs[BPF_REG_0].type = PTR_TO_TCP_SOCK_OR_NULL;
+		else
+			regs[BPF_REG_0].type = PTR_TO_SOCK_COMMON_OR_NULL;
 		regs[BPF_REG_0].id = ++env->id_gen;
 	} else {
 		verbose(env, "unknown return type %d of func %s#%d\n",
@@ -4264,6 +4297,15 @@ static void mark_map_reg(struct bpf_reg_state *regs, u32 regno, u32 id,
 		else
 			reg->type = PTR_TO_MEM;
 		reg->id = 0;
+	} else if (reg->type == PTR_TO_SOCK_COMMON_OR_NULL && reg->id == id) {
+		reg->type = is_null ? SCALAR_VALUE : PTR_TO_SOCK_COMMON;
+		reg->id = 0;
+	} else if (reg->type == PTR_TO_TCP_SOCK_OR_NULL && reg->id == id) {
+		reg->type = is_null ? SCALAR_VALUE : PTR_TO_TCP_SOCK;
+		reg->id = 0;
+	} else if (reg->type == PTR_TO_SOCKET_OR_NULL && reg->id == id) {
+		reg->type = is_null ? SCALAR_VALUE : PTR_TO_SOCKET;
+		reg->id = 0;
 	}
 }
 
@@ -4502,7 +4544,10 @@ static int check_cond_jmp_op(struct bpf_verifier_env *env,
 	if (BPF_SRC(insn->code) == BPF_K &&
 	    insn->imm == 0 && (opcode == BPF_JEQ || opcode == BPF_JNE) &&
 	    (dst_reg->type == PTR_TO_MAP_VALUE_OR_NULL ||
-	     dst_reg->type == PTR_TO_MEM_OR_NULL)) {
+	     dst_reg->type == PTR_TO_MEM_OR_NULL ||
+	     dst_reg->type == PTR_TO_SOCKET_OR_NULL ||
+	     dst_reg->type == PTR_TO_SOCK_COMMON_OR_NULL ||
+	     dst_reg->type == PTR_TO_TCP_SOCK_OR_NULL)) {
 		/* Mark all identical map registers in each branch as either
 		 * safe or unknown depending R == 0 or R != 0 conditional.
 		 */

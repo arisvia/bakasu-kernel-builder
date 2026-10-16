@@ -168,6 +168,8 @@ enum bpf_arg_type {
 	ARG_ANYTHING,		/* any (initialized) argument is ok */
 	ARG_PTR_TO_ALLOC_MEM,	/* pointer to dynamically allocated memory */
 	ARG_CONST_ALLOC_SIZE_OR_ZERO,	/* number of bytes to allocate (or 0) */
+	ARG_PTR_TO_SOCK_COMMON,	/* pointer to sock_common */
+	ARG_PTR_TO_SOCKET,	/* pointer to bpf_sock (fullsock) */
 };
 
 /* type of values returned from helper functions */
@@ -177,6 +179,9 @@ enum bpf_return_type {
 	RET_PTR_TO_MAP_VALUE,		/* returns a pointer to map elem value */
 	RET_PTR_TO_MAP_VALUE_OR_NULL,	/* returns a pointer to map elem value or NULL */
 	RET_PTR_TO_ALLOC_MEM_OR_NULL,	/* returns a pointer to allocated mem or NULL */
+	RET_PTR_TO_SOCKET_OR_NULL,	/* returns a pointer to a socket or NULL */
+	RET_PTR_TO_TCP_SOCK_OR_NULL,	/* returns a pointer to a tcp_sock or NULL */
+	RET_PTR_TO_SOCK_COMMON_OR_NULL,	/* returns a pointer to a sock_common or NULL */
 };
 
 /* eBPF function prototype used by verifier to allow BPF_CALLs from eBPF programs
@@ -229,6 +234,10 @@ enum bpf_reg_type {
 	PTR_TO_PACKET_END,	 /* skb->data + headlen */
 	PTR_TO_SOCKET_OR_NULL,	 /* reg points to struct sock or NULL */
 	PTR_TO_SOCKET,		 /* reg points to struct sock */
+	PTR_TO_SOCK_COMMON_OR_NULL, /* reg points to sock_common or NULL */
+	PTR_TO_SOCK_COMMON,	 /* reg points to sock_common */
+	PTR_TO_TCP_SOCK_OR_NULL, /* reg points to struct tcp_sock or NULL */
+	PTR_TO_TCP_SOCK,	 /* reg points to struct tcp_sock */
 	PTR_TO_MEM_OR_NULL,	 /* reg points to valid memory region or NULL */
 	PTR_TO_MEM,		 /* reg points to valid memory region */
 };
