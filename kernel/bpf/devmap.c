@@ -114,6 +114,13 @@ static int dev_map_init_map(struct bpf_dtab *dtab, union bpf_attr *attr)
 	    attr->value_size != 4 || attr->map_flags & ~DEV_CREATE_FLAG_MASK)
 		return -EINVAL;
 
+	/* Lookup returns a pointer straight to dev->ifindex, so make sure the
+	 * verifier prevents writes from the BPF side
+	 */
+	attr->map_flags |= BPF_F_RDONLY_PROG;
+
+	bpf_map_init_from_attr(&dtab->map, attr);
+
 	/* make sure page count doesn't overflow */
 	cost = (u64) dtab->map.max_entries * sizeof(struct bpf_dtab_netdev *);
 	cost += sizeof(struct list_head) * num_possible_cpus();
@@ -149,22 +156,27 @@ static int dev_map_init_map(struct bpf_dtab *dtab, union bpf_attr *attr)
 		INIT_LIST_HEAD(flush_list);
 	}
 
+	/* Always allocate the index array: dev_map_free() walks it, and for a
+	 * DEVMAP_HASH it still doubles as the map index/idx space.
+	 */
+	dtab->netdev_map = bpf_map_area_alloc(dtab->map.max_entries *
+					      sizeof(struct bpf_dtab_netdev *),
+					      dtab->map.numa_node);
+	if (!dtab->netdev_map)
+		goto free_dtab;
+
 	if (attr->map_type == BPF_MAP_TYPE_DEVMAP_HASH) {
 		dtab->dev_index_head = dev_map_create_hash(dtab->n_buckets);
 		if (!dtab->dev_index_head)
-			goto free_dtab;
+			goto free_map_area;
 
 		spin_lock_init(&dtab->index_lock);
-	} else {
-		dtab->netdev_map = bpf_map_area_alloc(dtab->map.max_entries *
-						      sizeof(struct bpf_dtab_netdev *),
-						      dtab->map.numa_node);
-		if (!dtab->netdev_map)
-			goto free_dtab;
 	}
 
 	return 0;
 
+free_map_area:
+	bpf_map_area_free(dtab->netdev_map);
 free_dtab:
 	free_percpu(dtab->flush_list);
 	return err;
@@ -181,8 +193,6 @@ static struct bpf_map *dev_map_alloc(union bpf_attr *attr)
 	dtab = kzalloc(sizeof(*dtab), GFP_USER);
 	if (!dtab)
 		return ERR_PTR(-ENOMEM);
-
-	bpf_map_init_from_attr(&dtab->map, attr);
 
 	err = dev_map_init_map(dtab, attr);
 	if (err)
