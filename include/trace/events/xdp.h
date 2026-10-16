@@ -147,7 +147,8 @@ struct _bpf_dtab_netdev {
 
 #define devmap_ifindex(fwd, map)				\
 	(!fwd ? 0 :						\
-	 ((map->map_type == BPF_MAP_TYPE_DEVMAP) ?		\
+	 ((map->map_type == BPF_MAP_TYPE_DEVMAP ||		\
+	   map->map_type == BPF_MAP_TYPE_DEVMAP_HASH) ?		\
 	  ((struct _bpf_dtab_netdev *)fwd)->dev->ifindex : 0))
 
 #define _trace_xdp_redirect_map(dev, xdp, fwd, map, idx)		\
