@@ -1462,13 +1462,24 @@ static int bpf_prog_load(union bpf_attr *attr)
 			if (lb) {
 				if (!copy_from_user(lb, u64_to_user_ptr(attr->log_buf),
 						    want)) {
-					u32 len, off;
+					u32 len, off, ci;
 
 					lb[want] = 0;
 					len = strlen(lb);
-					off = len > 900 ? len - 900 : 0;
-					pr_err("BakaSU-DBG vlog len=%u tail>>>%s<<<END\n",
-					       len, lb + off);
+					pr_err("BakaSU-DBG vlog len=%u chunks=%u\n",
+					       len, (len + 999) / 1000);
+					for (ci = 0; ci * 1000 < len && ci < 24; ci++) {
+						char save;
+
+						off = ci * 1000;
+						save = (off + 1000 < len) ?
+						       lb[off + 1000] : 0;
+						lb[off + 1000] = 0;
+						pr_err("BakaSU-C%02u>>>%s\n",
+						       ci, lb + off);
+						if (off + 1000 < want)
+							lb[off + 1000] = save;
+					}
 				} else {
 					pr_err("BakaSU-DBG vlog: copy_from_user failed\n");
 				}
