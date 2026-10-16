@@ -1449,48 +1449,8 @@ static int bpf_prog_load(union bpf_attr *attr)
 
 	/* run eBPF verifier */
 	err = bpf_check(&prog, attr);
-	if (err < 0) {
-		pr_err("BakaSU-DBG bpf_prog_load: verifier REJECTED name='%s' err=%d\n",
-		       attr->prog_name, err);
-		if (attr->log_level && attr->log_buf && attr->log_size) {
-			u32 want = attr->log_size;
-			char *lb;
-
-			if (want > 65536)
-				want = 65536;
-			lb = kmalloc(want + 1, GFP_KERNEL);
-			if (lb) {
-				if (!copy_from_user(lb, u64_to_user_ptr(attr->log_buf),
-						    want)) {
-					u32 len, off, ci;
-
-					lb[want] = 0;
-					len = strlen(lb);
-					pr_err("BakaSU-DBG vlog len=%u chunks=%u\n",
-					       len, (len + 999) / 1000);
-					for (ci = 0; ci * 1000 < len && ci < 24; ci++) {
-						char save;
-
-						off = ci * 1000;
-						save = (off + 1000 < len) ?
-						       lb[off + 1000] : 0;
-						lb[off + 1000] = 0;
-						pr_err("BakaSU-C%02u>>>%s\n",
-						       ci, lb + off);
-						if (off + 1000 < want)
-							lb[off + 1000] = save;
-					}
-				} else {
-					pr_err("BakaSU-DBG vlog: copy_from_user failed\n");
-				}
-				kfree(lb);
-			}
-		} else {
-			pr_err("BakaSU-DBG vlog: no log buffer (level=%u size=%u)\n",
-			       attr->log_level, attr->log_size);
-		}
+	if (err < 0)
 		goto free_used_maps;
-	}
 
 	prog = bpf_prog_select_runtime(prog, &err);
 	if (err < 0)
