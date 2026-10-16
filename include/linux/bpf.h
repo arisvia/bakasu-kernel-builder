@@ -217,6 +217,8 @@ enum bpf_reg_type {
 	PTR_TO_PACKET_META,	 /* skb->data - meta_len */
 	PTR_TO_PACKET,		 /* reg points to skb->data */
 	PTR_TO_PACKET_END,	 /* skb->data + headlen */
+	PTR_TO_SOCKET_OR_NULL,	 /* reg points to struct sock or NULL */
+	PTR_TO_SOCKET,		 /* reg points to struct sock */
 };
 
 /* The information passed from prog-specific *_is_valid_access
