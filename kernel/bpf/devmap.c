@@ -550,41 +550,6 @@ static int dev_map_delete_elem(struct bpf_map *map, void *key)
 	return 0;
 }
 
-static int dev_map_update_elem(struct bpf_map *map, void *key, void *value,
-				u64 map_flags)
-{
-	struct bpf_dtab *dtab = container_of(map, struct bpf_dtab, map);
-	struct net *net = current->nsproxy->net_ns;
-	struct bpf_dtab_netdev *dev, *old_dev;
-	u32 i = *(u32 *)key;
-	u32 ifindex = *(u32 *)value;
-
-	if (unlikely(map_flags > BPF_EXIST))
-		return -EINVAL;
-	if (unlikely(i >= dtab->map.max_entries))
-		return -E2BIG;
-	if (unlikely(map_flags == BPF_NOEXIST))
-		return -EEXIST;
-
-	if (!ifindex) {
-		dev = NULL;
-	} else {
-		dev = __dev_map_alloc_node(net, dtab, ifindex, i);
-		if (IS_ERR(dev))
-			return PTR_ERR(dev);
-	}
-
-	/* Use call_rcu() here to ensure rcu critical sections have completed
-	 * Remembering the driver side flush operation will happen before the
-	 * net device is removed.
-	 */
-	old_dev = xchg(&dtab->netdev_map[i], dev);
-	if (old_dev)
-		call_rcu(&old_dev->rcu, __dev_map_entry_free);
-
-	return 0;
-}
-
 static struct bpf_dtab_netdev *__dev_map_alloc_node(struct net *net,
 						    struct bpf_dtab *dtab,
 						    u32 ifindex,
@@ -625,6 +590,41 @@ static struct bpf_dtab_netdev *__dev_map_alloc_node(struct net *net,
 	dev->dtab = dtab;
 
 	return dev;
+}
+
+static int dev_map_update_elem(struct bpf_map *map, void *key, void *value,
+				u64 map_flags)
+{
+	struct bpf_dtab *dtab = container_of(map, struct bpf_dtab, map);
+	struct net *net = current->nsproxy->net_ns;
+	struct bpf_dtab_netdev *dev, *old_dev;
+	u32 i = *(u32 *)key;
+	u32 ifindex = *(u32 *)value;
+
+	if (unlikely(map_flags > BPF_EXIST))
+		return -EINVAL;
+	if (unlikely(i >= dtab->map.max_entries))
+		return -E2BIG;
+	if (unlikely(map_flags == BPF_NOEXIST))
+		return -EEXIST;
+
+	if (!ifindex) {
+		dev = NULL;
+	} else {
+		dev = __dev_map_alloc_node(net, dtab, ifindex, i);
+		if (IS_ERR(dev))
+			return PTR_ERR(dev);
+	}
+
+	/* Use call_rcu() here to ensure rcu critical sections have completed
+	 * Remembering the driver side flush operation will happen before the
+	 * net device is removed.
+	 */
+	old_dev = xchg(&dtab->netdev_map[i], dev);
+	if (old_dev)
+		call_rcu(&old_dev->rcu, __dev_map_entry_free);
+
+	return 0;
 }
 
 static int __dev_map_hash_update_elem(struct net *net, struct bpf_map *map,
