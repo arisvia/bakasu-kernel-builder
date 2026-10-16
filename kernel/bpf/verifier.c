@@ -2021,10 +2021,15 @@ static int check_func_arg(struct bpf_verifier_env *env, u32 regno,
 	}
 
 	if (arg_type == ARG_PTR_TO_MAP_KEY ||
-	    arg_type == ARG_PTR_TO_MAP_VALUE) {
+	    arg_type == ARG_PTR_TO_MAP_VALUE ||
+	    arg_type == ARG_PTR_TO_MAP_VALUE_OR_NULL) {
 		expected_type = PTR_TO_STACK;
-		if (!type_is_pkt_pointer(type) && type != PTR_TO_MAP_VALUE &&
-		    type != expected_type)
+		if (register_is_null(reg) &&
+		    arg_type == ARG_PTR_TO_MAP_VALUE_OR_NULL)
+			/* final test in check_stack_boundary() */;
+		else if (!type_is_pkt_pointer(type) &&
+			 type != PTR_TO_MAP_VALUE &&
+			 type != expected_type)
 			goto err_type;
 	} else if (arg_type == ARG_CONST_SIZE ||
 		   arg_type == ARG_CONST_SIZE_OR_ZERO) {
@@ -2081,7 +2086,9 @@ static int check_func_arg(struct bpf_verifier_env *env, u32 regno,
 		err = check_helper_mem_access(env, regno,
 					      meta->map_ptr->key_size, false,
 					      NULL);
-	} else if (arg_type == ARG_PTR_TO_MAP_VALUE) {
+	} else if (arg_type == ARG_PTR_TO_MAP_VALUE ||
+		   (arg_type == ARG_PTR_TO_MAP_VALUE_OR_NULL &&
+		    !register_is_null(reg))) {
 		/* bpf_map_xxx(..., map_ptr, ..., value) call:
 		 * check [value, value + map->value_size) validity
 		 */
@@ -2214,6 +2221,11 @@ static int check_map_func_compatibility(struct bpf_verifier_env *env,
 		if (func_id != BPF_FUNC_sk_select_reuseport)
 			goto error;
 		break;
+	case BPF_MAP_TYPE_SK_STORAGE:
+		if (func_id != BPF_FUNC_sk_storage_get &&
+		    func_id != BPF_FUNC_sk_storage_delete)
+			goto error;
+		break;
 	default:
 		break;
 	}
@@ -2268,6 +2280,11 @@ static int check_map_func_compatibility(struct bpf_verifier_env *env,
 		break;
 	case BPF_FUNC_sk_select_reuseport:
 		if (map->map_type != BPF_MAP_TYPE_REUSEPORT_SOCKARRAY)
+			goto error;
+		break;
+	case BPF_FUNC_sk_storage_get:
+	case BPF_FUNC_sk_storage_delete:
+		if (map->map_type != BPF_MAP_TYPE_SK_STORAGE)
 			goto error;
 		break;
 	default:

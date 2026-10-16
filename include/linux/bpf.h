@@ -19,6 +19,7 @@
 
 struct bpf_verifier_env;
 struct perf_event;
+struct poll_table_struct;
 struct bpf_prog;
 struct bpf_map;
 struct sock;
@@ -57,6 +58,8 @@ struct bpf_map_ops {
 			     const struct btf_type *key_type,
 			     const struct btf_type *value_type);
 	int (*map_mmap)(struct bpf_map *map, struct vm_area_struct *vma);
+	__poll_t (*map_poll)(struct bpf_map *map, struct file *filp,
+			     struct poll_table_struct *pts);
 };
 
 struct bpf_map {
@@ -144,6 +147,9 @@ enum bpf_arg_type {
 	ARG_CONST_MAP_PTR,	/* const argument used as pointer to bpf_map */
 	ARG_PTR_TO_MAP_KEY,	/* pointer to stack used as map key */
 	ARG_PTR_TO_MAP_VALUE,	/* pointer to stack used as map value */
+	ARG_PTR_TO_MAP_VALUE_OR_NULL,	/* pointer to stack used as map
+					 * value, or NULL
+					 */
 
 	/* the following constraints used to prototype bpf_memcmp() and other
 	 * functions that access data on eBPF program stack
@@ -853,6 +859,13 @@ extern const struct bpf_func_proto bpf_sock_hash_update_proto;
 extern const struct bpf_func_proto bpf_get_current_cgroup_id_proto;
 
 extern const struct bpf_func_proto bpf_get_local_storage_proto;
+#ifdef CONFIG_BPF_SYSCALL
+extern const struct bpf_func_proto bpf_ringbuf_output_proto;
+extern const struct bpf_func_proto bpf_ringbuf_reserve_proto;
+extern const struct bpf_func_proto bpf_ringbuf_submit_proto;
+extern const struct bpf_func_proto bpf_ringbuf_discard_proto;
+extern const struct bpf_func_proto bpf_ringbuf_query_proto;
+#endif
 
 /* Shared helpers among cBPF and eBPF. */
 void bpf_user_rnd_init_once(void);

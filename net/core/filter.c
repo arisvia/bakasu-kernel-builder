@@ -55,6 +55,9 @@
 #include <net/dst_metadata.h>
 #include <net/dst.h>
 #include <net/sock_reuseport.h>
+#ifdef CONFIG_BPF_SYSCALL
+#include <net/bpf_sk_storage.h>
+#endif
 #include <net/busy_poll.h>
 #include <net/tcp.h>
 #include <net/xfrm.h>
@@ -4883,6 +4886,18 @@ bpf_base_func_proto(enum bpf_func_id func_id)
 		return &bpf_ktime_get_ns_proto;
 	case BPF_FUNC_ktime_get_boot_ns:
 		return &bpf_ktime_get_boot_ns_proto;
+#ifdef CONFIG_BPF_SYSCALL
+	case BPF_FUNC_ringbuf_output:
+		return &bpf_ringbuf_output_proto;
+	case BPF_FUNC_ringbuf_reserve:
+		return &bpf_ringbuf_reserve_proto;
+	case BPF_FUNC_ringbuf_submit:
+		return &bpf_ringbuf_submit_proto;
+	case BPF_FUNC_ringbuf_discard:
+		return &bpf_ringbuf_discard_proto;
+	case BPF_FUNC_ringbuf_query:
+		return &bpf_ringbuf_query_proto;
+#endif
 	case BPF_FUNC_trace_printk:
 		if (capable(CAP_SYS_ADMIN))
 			return bpf_get_trace_printk_proto();
@@ -4903,6 +4918,12 @@ sock_filter_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
 		return &bpf_get_current_uid_gid_proto;
 	case BPF_FUNC_get_local_storage:
 		return &bpf_get_local_storage_proto;
+#ifdef CONFIG_BPF_SYSCALL
+	case BPF_FUNC_sk_storage_get:
+		return &bpf_sk_storage_get_proto;
+	case BPF_FUNC_sk_storage_delete:
+		return &bpf_sk_storage_delete_proto;
+#endif
 	default:
 		return bpf_base_func_proto(func_id);
 	}

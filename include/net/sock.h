@@ -116,6 +116,9 @@ typedef struct {
 struct sock;
 struct proto;
 struct net;
+#if defined(CONFIG_BPF_SYSCALL)
+struct bpf_sk_storage;
+#endif
 
 typedef __u32 __bitwise __portpair;
 typedef __u64 __bitwise __addrpair;
@@ -522,7 +525,11 @@ struct sock {
 #else
 	ANDROID_KABI_USE(1, spinlock_t sk_peer_lock);
 #endif
+#ifdef CONFIG_BPF_SYSCALL
+	ANDROID_KABI_USE(2, struct bpf_sk_storage __rcu *sk_bpf_storage);
+#else
 	ANDROID_KABI_RESERVE(2);
+#endif
 	ANDROID_KABI_RESERVE(3);
 	ANDROID_KABI_RESERVE(4);
 	ANDROID_KABI_RESERVE(5);
