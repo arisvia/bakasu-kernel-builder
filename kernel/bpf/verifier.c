@@ -6660,8 +6660,24 @@ skip_full_check:
 	if (ret == 0)
 		ret = fixup_call_args(env);
 
-	if (log->level && bpf_verifier_log_full(log))
-		ret = -ENOSPC;
+	pr_err("BakaSU-VLOG ret=%d level=%u total=%u used=%u insns=%u subprogs=%u\n",
+	       ret, log->level, log->len_total, log->len_used,
+	       env->insn_processed, env->subprog_cnt);
+	if (log->level && bpf_verifier_log_full(log)) {
+		/* The log buffer was truncated. Only report -ENOSPC when
+		 * verification actually failed: userspace passes a log buffer
+		 * to obtain diagnostics and must know when the message it got
+		 * is incomplete. If the program verified fine, the truncated
+		 * log is harmless and must not fail an otherwise valid load.
+		 * Android's netbpfload passes a fixed-size log buffer and does
+		 * not retry on -ENOSPC, so a valid program with a long verifier
+		 * trace (bounded loops trace heavily) would never load.
+		 */
+		pr_err("BakaSU-VLOG log FULL, verification %s\n",
+		       ret ? "failed" : "succeeded");
+		if (ret)
+			ret = -ENOSPC;
+	}
 	if (log->level && !log->ubuf) {
 		ret = -EFAULT;
 		goto err_release_maps;
