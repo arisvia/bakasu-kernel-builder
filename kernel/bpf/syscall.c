@@ -1462,24 +1462,18 @@ static int bpf_prog_load(union bpf_attr *attr)
 			if (lb) {
 				if (!copy_from_user(lb, u64_to_user_ptr(attr->log_buf),
 						    want)) {
-					u32 len, off, ci;
+					u32 len, off;
 
 					lb[want] = 0;
-					len = strlen(lb);
-					pr_err("BakaSU-DBG vlog len=%u chunks=%u\n",
-					       len, (len + 999) / 1000);
-					for (ci = 0; ci * 1000 < len && ci < 24; ci++) {
-						char save;
-
-						off = ci * 1000;
-						save = (off + 1000 < len) ?
-						       lb[off + 1000] : 0;
-						lb[off + 1000] = 0;
-						pr_err("BakaSU-C%02u>>>%s\n",
-						       ci, lb + off);
-						if (off + 1000 < want)
-							lb[off + 1000] = save;
-					}
+					len = strnlen(lb, want);
+					/* Print only the tail: the verifier's
+					 * rejection reason is the last line,
+					 * and a short record survives the
+					 * pstore ring until we can read it.
+					 */
+					off = len > 380 ? len - 380 : 0;
+					pr_err("BakaSU-TAIL[%u]>>>%s<<<\n",
+					       len, lb + off);
 				} else {
 					pr_err("BakaSU-DBG vlog: copy_from_user failed\n");
 				}
