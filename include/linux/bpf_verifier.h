@@ -63,6 +63,8 @@ struct bpf_reg_state {
 	 * came from, when one is tested for != NULL.
 	 */
 	u32 id;
+	/* For PTR_TO_MEM | PTR_TO_MEM_OR_NULL: byte size of the memory region */
+	u32 mem_size;
 	/* For scalar types (SCALAR_VALUE), this represents our knowledge of
 	 * the actual value.
 	 * For pointer types, this represents the variable part of the offset

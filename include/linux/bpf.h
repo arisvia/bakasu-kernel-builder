@@ -166,6 +166,8 @@ enum bpf_arg_type {
 
 	ARG_PTR_TO_CTX,		/* pointer to context */
 	ARG_ANYTHING,		/* any (initialized) argument is ok */
+	ARG_PTR_TO_ALLOC_MEM,	/* pointer to dynamically allocated memory */
+	ARG_CONST_ALLOC_SIZE_OR_ZERO,	/* number of bytes to allocate (or 0) */
 };
 
 /* type of values returned from helper functions */
@@ -174,6 +176,7 @@ enum bpf_return_type {
 	RET_VOID,			/* function doesn't return anything */
 	RET_PTR_TO_MAP_VALUE,		/* returns a pointer to map elem value */
 	RET_PTR_TO_MAP_VALUE_OR_NULL,	/* returns a pointer to map elem value or NULL */
+	RET_PTR_TO_ALLOC_MEM_OR_NULL,	/* returns a pointer to allocated mem or NULL */
 };
 
 /* eBPF function prototype used by verifier to allow BPF_CALLs from eBPF programs
@@ -226,6 +229,8 @@ enum bpf_reg_type {
 	PTR_TO_PACKET_END,	 /* skb->data + headlen */
 	PTR_TO_SOCKET_OR_NULL,	 /* reg points to struct sock or NULL */
 	PTR_TO_SOCKET,		 /* reg points to struct sock */
+	PTR_TO_MEM_OR_NULL,	 /* reg points to valid memory region or NULL */
+	PTR_TO_MEM,		 /* reg points to valid memory region */
 };
 
 /* The information passed from prog-specific *_is_valid_access
