@@ -2385,6 +2385,12 @@ enum bpf_lwt_encap_mode {
 /* user accessible mirror of in-kernel sk_buff.
  * new fields can only be added to the end of this structure
  */
+#define __bpf_md_ptr(type, name)	\
+union {					\
+	type name;			\
+	__u64 :64;			\
+} __attribute__((aligned(8)))
+
 struct __sk_buff {
 	__u32 len;
 	__u32 pkt_type;
@@ -2416,6 +2422,17 @@ struct __sk_buff {
 	/* ... here. */
 
 	__u32 data_meta;
+	/* Fields below exist in upstream for BPF_PROG_TYPE_FLOW_DISSECTOR
+	 * and BPF_PROG_TYPE_SCHED_CLS (tstamp/wire_len/gso_segs).  Only the
+	 * latter group is wired up here; flow_keys/sk need verifier support
+	 * (PTR_TO_SOCKET_OR_NULL) that this 4.19 tree does not have, so they
+	 * are kept as padding to preserve offsets.
+	 */
+	__bpf_md_ptr(struct bpf_flow_keys *, flow_keys);
+	__u64 tstamp;
+	__u32 wire_len;
+	__u32 gso_segs;
+	__bpf_md_ptr(struct bpf_sock *, sk);
 };
 
 struct bpf_tunnel_key {
