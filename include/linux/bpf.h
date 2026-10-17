@@ -261,6 +261,11 @@ struct bpf_prog_ops {
 			union bpf_attr __user *uattr);
 };
 
+typedef u32 (*bpf_convert_ctx_access_t)(enum bpf_access_type type,
+					const struct bpf_insn *src,
+					struct bpf_insn *dst,
+					struct bpf_prog *prog, u32 *target_size);
+
 struct bpf_verifier_ops {
 	/* return eBPF function prototype for verification */
 	const struct bpf_func_proto *
@@ -277,10 +282,7 @@ struct bpf_verifier_ops {
 			    const struct bpf_prog *prog);
 	int (*gen_ld_abs)(const struct bpf_insn *orig,
 			  struct bpf_insn *insn_buf);
-	u32 (*convert_ctx_access)(enum bpf_access_type type,
-				  const struct bpf_insn *src,
-				  struct bpf_insn *dst,
-				  struct bpf_prog *prog, u32 *target_size);
+	bpf_convert_ctx_access_t convert_ctx_access;
 };
 
 struct bpf_prog_offload_ops {
@@ -741,6 +743,13 @@ static inline bool bpf_map_is_dev_bound(struct bpf_map *map)
 
 struct bpf_map *bpf_map_offload_map_alloc(union bpf_attr *attr);
 void bpf_map_offload_map_free(struct bpf_map *map);
+bool bpf_sock_is_valid_access(int off, int size, enum bpf_access_type type,
+			      struct bpf_insn_access_aux *info);
+u32 bpf_sock_convert_ctx_access(enum bpf_access_type type,
+				const struct bpf_insn *si,
+				struct bpf_insn *insn_buf,
+				struct bpf_prog *prog,
+				u32 *target_size);
 #else
 static inline int bpf_prog_offload_init(struct bpf_prog *prog,
 					union bpf_attr *attr)
@@ -765,6 +774,20 @@ static inline struct bpf_map *bpf_map_offload_map_alloc(union bpf_attr *attr)
 
 static inline void bpf_map_offload_map_free(struct bpf_map *map)
 {
+}
+static inline bool bpf_sock_is_valid_access(int off, int size,
+					    enum bpf_access_type type,
+					    struct bpf_insn_access_aux *info)
+{
+	return false;
+}
+static inline u32 bpf_sock_convert_ctx_access(enum bpf_access_type type,
+					      const struct bpf_insn *si,
+					      struct bpf_insn *insn_buf,
+					      struct bpf_prog *prog,
+					      u32 *target_size)
+{
+	return 0;
 }
 #endif /* CONFIG_NET && CONFIG_BPF_SYSCALL */
 

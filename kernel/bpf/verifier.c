@@ -631,6 +631,15 @@ static void mark_reg_known_zero(struct bpf_verifier_env *env,
 	}
 	__mark_reg_known_zero(regs + regno);
 }
+static bool reg_type_may_be_null(enum bpf_reg_type type)
+{
+	return type == PTR_TO_MAP_VALUE_OR_NULL ||
+	       type == PTR_TO_SOCKET_OR_NULL ||
+	       type == PTR_TO_SOCK_COMMON_OR_NULL ||
+	       type == PTR_TO_TCP_SOCK_OR_NULL ||
+	       type == PTR_TO_MEM_OR_NULL;
+}
+
 
 static bool reg_is_pkt_pointer(const struct bpf_reg_state *reg)
 {
@@ -1388,9 +1397,6 @@ static int check_ctx_access(struct bpf_verifier_env *env, int insn_idx, int off,
 		 */
 		*reg_type = info.reg_type;
 
-		if (*reg_type == PTR_TO_SOCKET_OR_NULL)
-			*reg_type = PTR_TO_SOCKET;
-
 		env->insn_aux_data[insn_idx].ctx_field_size = info.ctx_field_size;
 		/* remember the offset of last byte accessed in ctx */
 		if (env->prog->aux->max_ctx_offset < off + size)
@@ -1669,6 +1675,26 @@ static void coerce_reg_to_size(struct bpf_reg_state *reg, int size)
  * if t==write && value_regno==-1, some unknown value is stored into memory
  * if t==read && value_regno==-1, don't care what we read from memory
  */
+static int check_sock_access(struct bpf_verifier_env *env, int insn_idx,
+			     u32 regno, int off, int size,
+			     enum bpf_access_type t)
+{
+	struct bpf_reg_state *regs = cur_regs(env);
+	struct bpf_insn_access_aux info = {};
+	bool valid;
+
+	valid = bpf_sock_is_valid_access(off, size, t, &info);
+	if (valid) {
+		env->insn_aux_data[insn_idx].ctx_field_size =
+			info.ctx_field_size;
+		return 0;
+	}
+
+	verbose(env, "R%d invalid %s access off=%d size=%d\n",
+		regno, reg_type_str[regs[regno].type], off, size);
+	return -EACCES;
+}
+
 static int check_mem_access(struct bpf_verifier_env *env, int insn_idx, u32 regno,
 			    int off, int bpf_size, enum bpf_access_type t,
 			    int value_regno, bool strict_alignment_once)
@@ -1720,11 +1746,14 @@ static int check_mem_access(struct bpf_verifier_env *env, int insn_idx, u32 regn
 			 * PTR_TO_PACKET[_META,_END]. In the latter
 			 * case, we know the offset is zero.
 			 */
-			if (reg_type == SCALAR_VALUE)
+			if (reg_type == SCALAR_VALUE) {
 				mark_reg_unknown(env, regs, value_regno);
-			else
+			} else {
 				mark_reg_known_zero(env, regs,
 						    value_regno);
+				if (reg_type_may_be_null(reg_type))
+					regs[value_regno].id = ++env->id_gen;
+			}
 			regs[value_regno].type = reg_type;
 		}
 
@@ -1770,6 +1799,16 @@ static int check_mem_access(struct bpf_verifier_env *env, int insn_idx, u32 regn
 				reg->mem_size, off, size);
 			return -EACCES;
 		}
+		if (!err && t == BPF_READ && value_regno >= 0)
+			mark_reg_unknown(env, regs, value_regno);
+	} else if (reg->type == PTR_TO_SOCKET ||
+		   reg->type == PTR_TO_SOCK_COMMON) {
+		if (t == BPF_WRITE) {
+			verbose(env, "R%d cannot write into %s\n",
+				regno, reg_type_str[reg->type]);
+			return -EACCES;
+		}
+		err = check_sock_access(env, insn_idx, regno, off, size, t);
 		if (!err && t == BPF_READ && value_regno >= 0)
 			mark_reg_unknown(env, regs, value_regno);
 	} else {
@@ -4543,11 +4582,7 @@ static int check_cond_jmp_op(struct bpf_verifier_env *env,
 	/* detect if R == 0 where R is returned from bpf_map_lookup_elem() */
 	if (BPF_SRC(insn->code) == BPF_K &&
 	    insn->imm == 0 && (opcode == BPF_JEQ || opcode == BPF_JNE) &&
-	    (dst_reg->type == PTR_TO_MAP_VALUE_OR_NULL ||
-	     dst_reg->type == PTR_TO_MEM_OR_NULL ||
-	     dst_reg->type == PTR_TO_SOCKET_OR_NULL ||
-	     dst_reg->type == PTR_TO_SOCK_COMMON_OR_NULL ||
-	     dst_reg->type == PTR_TO_TCP_SOCK_OR_NULL)) {
+	    reg_type_may_be_null(dst_reg->type)) {
 		/* Mark all identical map registers in each branch as either
 		 * safe or unknown depending R == 0 or R != 0 conditional.
 		 */
@@ -6144,8 +6179,21 @@ static int convert_ctx_accesses(struct bpf_verifier_env *env)
 		if (!ctx_access)
 			continue;
 
-		if (env->insn_aux_data[i + delta].ptr_type != PTR_TO_CTX)
+		bpf_convert_ctx_access_t convert_ctx_access;
+
+		switch (env->insn_aux_data[i + delta].ptr_type) {
+		case PTR_TO_CTX:
+			if (!ops->convert_ctx_access)
+				continue;
+			convert_ctx_access = ops->convert_ctx_access;
+			break;
+		case PTR_TO_SOCKET:
+		case PTR_TO_SOCK_COMMON:
+			convert_ctx_access = bpf_sock_convert_ctx_access;
+			break;
+		default:
 			continue;
+		}
 
 		ctx_field_size = env->insn_aux_data[i + delta].ctx_field_size;
 		size = BPF_LDST_BYTES(insn);
@@ -6177,8 +6225,8 @@ static int convert_ctx_accesses(struct bpf_verifier_env *env)
 		}
 
 		target_size = 0;
-		cnt = ops->convert_ctx_access(type, insn, insn_buf, env->prog,
-					      &target_size);
+		cnt = convert_ctx_access(type, insn, insn_buf, env->prog,
+					 &target_size);
 		if (cnt == 0 || cnt >= ARRAY_SIZE(insn_buf) ||
 		    (ctx_field_size && !target_size)) {
 			verbose(env, "bpf verifier is misconfigured\n");
