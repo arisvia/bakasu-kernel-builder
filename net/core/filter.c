@@ -3905,6 +3905,18 @@ static const struct bpf_func_proto bpf_get_socket_cookie_sock_ops_proto = {
 	.ret_type	= RET_INTEGER,
 	.arg1_type	= ARG_PTR_TO_CTX,
 };
+BPF_CALL_1(bpf_get_socket_cookie_sock, struct sock *, sk)
+{
+	return sk ? sock_gen_cookie(sk) : 0;
+}
+
+static const struct bpf_func_proto bpf_get_socket_cookie_sock_proto = {
+	.func		= bpf_get_socket_cookie_sock,
+	.gpl_only	= false,
+	.ret_type	= RET_INTEGER,
+	.arg1_type	= ARG_PTR_TO_CTX,
+};
+
 
 BPF_CALL_1(bpf_get_socket_uid, struct sk_buff *, skb)
 {
@@ -5007,6 +5019,8 @@ static const struct bpf_func_proto *
 sock_addr_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
 {
 	switch (func_id) {
+	case BPF_FUNC_get_socket_cookie:
+		return &bpf_get_socket_cookie_sock_proto;
 	/* inet and inet6 sockets are created in a process
 	 * context so there is always a valid uid/gid
 	 */
