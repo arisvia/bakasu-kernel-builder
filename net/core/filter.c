@@ -5004,6 +5004,8 @@ sock_filter_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
 		return &bpf_get_current_uid_gid_proto;
 	case BPF_FUNC_get_local_storage:
 		return &bpf_get_local_storage_proto;
+	case BPF_FUNC_get_socket_cookie:
+		return &bpf_get_socket_cookie_sock_proto;
 #ifdef CONFIG_BPF_SYSCALL
 	case BPF_FUNC_sk_storage_get:
 		return &bpf_sk_storage_get_proto;
@@ -5019,8 +5021,6 @@ static const struct bpf_func_proto *
 sock_addr_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
 {
 	switch (func_id) {
-	case BPF_FUNC_get_socket_cookie:
-		return &bpf_get_socket_cookie_sock_proto;
 	/* inet and inet6 sockets are created in a process
 	 * context so there is always a valid uid/gid
 	 */
