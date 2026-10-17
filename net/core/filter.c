@@ -6331,6 +6331,7 @@ static u32 sock_filter_convert_ctx_access(enum bpf_access_type type,
 		else
 			*insn++ = BPF_LDX_MEM(BPF_W, si->dst_reg, si->src_reg,
 				      offsetof(struct sock, sk_bound_dev_if));
+		*target_size = 4;
 		break;
 
 	case offsetof(struct bpf_sock, mark):
@@ -6342,6 +6343,7 @@ static u32 sock_filter_convert_ctx_access(enum bpf_access_type type,
 		else
 			*insn++ = BPF_LDX_MEM(BPF_W, si->dst_reg, si->src_reg,
 				      offsetof(struct sock, sk_mark));
+		*target_size = 4;
 		break;
 
 	case offsetof(struct bpf_sock, priority):
@@ -6353,6 +6355,7 @@ static u32 sock_filter_convert_ctx_access(enum bpf_access_type type,
 		else
 			*insn++ = BPF_LDX_MEM(BPF_W, si->dst_reg, si->src_reg,
 				      offsetof(struct sock, sk_priority));
+		*target_size = 4;
 		break;
 
 	case offsetof(struct bpf_sock, family):
@@ -6360,6 +6363,7 @@ static u32 sock_filter_convert_ctx_access(enum bpf_access_type type,
 
 		*insn++ = BPF_LDX_MEM(BPF_H, si->dst_reg, si->src_reg,
 				      offsetof(struct sock, sk_family));
+		*target_size = 2;
 		break;
 
 	case offsetof(struct bpf_sock, type):
@@ -6367,6 +6371,7 @@ static u32 sock_filter_convert_ctx_access(enum bpf_access_type type,
 				      offsetof(struct sock, __sk_flags_offset));
 		*insn++ = BPF_ALU32_IMM(BPF_AND, si->dst_reg, SK_FL_TYPE_MASK);
 		*insn++ = BPF_ALU32_IMM(BPF_RSH, si->dst_reg, SK_FL_TYPE_SHIFT);
+		*target_size = 2;
 		break;
 
 	case offsetof(struct bpf_sock, protocol):
@@ -6374,8 +6379,8 @@ static u32 sock_filter_convert_ctx_access(enum bpf_access_type type,
 				      offsetof(struct sock, __sk_flags_offset));
 		*insn++ = BPF_ALU32_IMM(BPF_AND, si->dst_reg, SK_FL_PROTO_MASK);
 		*insn++ = BPF_ALU32_IMM(BPF_RSH, si->dst_reg, SK_FL_PROTO_SHIFT);
+		*target_size = 1;
 		break;
-
 	case offsetof(struct bpf_sock, src_ip4):
 		*insn++ = BPF_LDX_MEM(
 			BPF_SIZE(si->code), si->dst_reg, si->src_reg,
